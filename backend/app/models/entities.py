@@ -256,7 +256,7 @@ class TopicMastery(Base, TimestampMixin):
         UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False
     )
     mastery_score: Mapped[float] = mapped_column(Float, default=0.0)
-    classification: Mapped[str] = mapped_column(String(16), default="weak")
+    classification: Mapped[str] = mapped_column(String(16), default="not_assessed")
     questions_attempted: Mapped[int] = mapped_column(Integer, default=0)
     correct_count: Mapped[int] = mapped_column(Integer, default=0)
     incorrect_count: Mapped[int] = mapped_column(Integer, default=0)

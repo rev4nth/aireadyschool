@@ -191,8 +191,8 @@ CREATE TABLE IF NOT EXISTS topic_mastery (
     topic_id UUID NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
     subject_id UUID NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
     mastery_score NUMERIC(5,2) NOT NULL DEFAULT 0.0,
-    classification TEXT NOT NULL DEFAULT 'weak'
-        CHECK (classification IN ('weak', 'medium', 'strong')),
+    classification TEXT NOT NULL DEFAULT 'not_assessed'
+        CHECK (classification IN ('weak', 'medium', 'strong', 'not_assessed')),
     questions_attempted INTEGER NOT NULL DEFAULT 0,
     correct_count INTEGER NOT NULL DEFAULT 0,
     incorrect_count INTEGER NOT NULL DEFAULT 0,

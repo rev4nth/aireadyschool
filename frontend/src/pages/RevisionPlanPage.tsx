@@ -83,39 +83,53 @@ export function RevisionPlanPage() {
         <CardHeader>
           <CardTitle className="text-base">Generate plan</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-4">
-          <div className="space-y-2">
-            <Label>Available days</Label>
-            <Input type="number" min={1} max={90} value={days} onChange={(e) => setDays(Number(e.target.value))} />
-          </div>
-          <div className="space-y-2">
-            <Label>Hours / day</Label>
-            <Input
-              type="number"
-              min={0.5}
-              max={12}
-              step={0.5}
-              value={hours}
-              onChange={(e) => setHours(Number(e.target.value))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Exam date</Label>
-            <Input type="date" value={examDate} onChange={(e) => setExamDate(e.target.value)} />
-          </div>
-          <div className="flex flex-col justify-end gap-2">
+        <CardContent className="space-y-3">
+          <div className="grid items-end gap-4 md:grid-cols-[1fr_1fr_1fr_auto]">
+            <div className="space-y-2">
+              <Label htmlFor="plan-days">Available days</Label>
+              <Input
+                id="plan-days"
+                type="number"
+                min={1}
+                max={90}
+                value={days}
+                onChange={(e) => setDays(Number(e.target.value))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="plan-hours">Hours / day</Label>
+              <Input
+                id="plan-hours"
+                type="number"
+                min={0.5}
+                max={12}
+                step={0.5}
+                value={hours}
+                onChange={(e) => setHours(Number(e.target.value))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="plan-exam">Exam date</Label>
+              <Input
+                id="plan-exam"
+                type="date"
+                value={examDate}
+                onChange={(e) => setExamDate(e.target.value)}
+              />
+            </div>
             <Button
+              className="h-10 w-full md:w-auto"
               onClick={() => createMutation.mutate()}
               disabled={!currentSubjectId || createMutation.isPending}
             >
               {createMutation.isPending ? "Building…" : "Create plan"}
             </Button>
-            <p className="text-xs text-muted-foreground">
-              {latestGapId
-                ? "Using latest gap report for this subject."
-                : "No gap report yet — will use mastery scores."}
-            </p>
           </div>
+          <p className="text-xs text-muted-foreground">
+            {latestGapId
+              ? "Using latest gap report for this subject."
+              : "No gap report yet — will use mastery scores."}
+          </p>
         </CardContent>
       </Card>
 

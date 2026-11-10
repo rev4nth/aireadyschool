@@ -86,6 +86,24 @@ export function GapReportPage() {
 
       {latest ? (
         <>
+          {counts.weak + counts.medium + counts.strong === 0 ? (
+            <Card className="border-warning/40 bg-warning/5">
+              <CardContent className="space-y-2 py-4 text-sm">
+                <p className="font-medium text-foreground">No assessed topics yet</p>
+                <p className="text-muted-foreground">
+                  Knowledge Gaps only classifies topics that appear on graded quiz questions.
+                  Your topic map may need a clean regenerate from the syllabus, then take a new
+                  diagnostic quiz. Unattempted topics stay <span className="font-medium">Not assessed</span>
+                  — they are not Weak.
+                </p>
+                <ol className="list-decimal space-y-1 pl-5 text-muted-foreground">
+                  <li>Topic Map → Generate from materials</li>
+                  <li>Diagnostic Quiz → Generate & start → submit answers</li>
+                  <li>Return here and click Generate report</li>
+                </ol>
+              </CardContent>
+            </Card>
+          ) : null}
           <Card>
             <CardHeader>
               <CardTitle>

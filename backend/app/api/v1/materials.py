@@ -29,7 +29,19 @@ router = APIRouter()
 ALLOWED_MIME = {
     "application/pdf",
     "text/plain",
+    "application/octet-stream",
 }
+
+
+def _mime_allowed(content_type: str | None, filename: str | None) -> bool:
+    """Browsers often send charset suffixes or empty types for .txt uploads."""
+    name = (filename or "").lower()
+    if name.endswith(".txt") or name.endswith(".pdf"):
+        return True
+    if not content_type:
+        return True
+    base = content_type.split(";")[0].strip().lower()
+    return base in ALLOWED_MIME
 
 
 async def _get_owned_document(db: AsyncSession, doc_id: UUID, user: AuthenticatedUser) -> Document:
@@ -69,7 +81,7 @@ async def upload_material(
         raise NotFoundError("Subject not found")
     ensure_owner(subject.user_id, user)
 
-    if file.content_type and file.content_type not in ALLOWED_MIME:
+    if not _mime_allowed(file.content_type, file.filename):
         raise AppError("Unsupported file type. Upload PDF or plain text.", status_code=400)
 
     content = await file.read()

@@ -18,8 +18,21 @@ from app.services.rag.retrieval import hybrid_retrieve
 
 logger = logging.getLogger(__name__)
 
-_UNIT_RE = re.compile(r"^(?:unit|chapter|module|section)\s*[\dIVXLC]+[:.\-\s]+(.+)$", re.I)
-_BULLET_RE = re.compile(r"^[-*•]\s+(.+)$")
+_UNIT_RE = re.compile(
+    r"^(?:unit|chapter|module|section)\s*[\dIVXLC]+\s*[:.\-\u2013\u2014\s]+\s*(.+)$",
+    re.I,
+)
+_BULLET_RE = re.compile(r"^(?:[-*•]|\d+\.)\s+(.+)$")
+_NUMBERED_TOPIC_RE = re.compile(r"^(\d+(?:\.\d+)*)\s+(.+)$")
+
+
+def _looks_like_sentence(text: str) -> bool:
+    cleaned = text.strip()
+    if len(cleaned) > 80:
+        return True
+    if cleaned.endswith((".", "!", "?")) and len(cleaned.split()) > 8:
+        return True
+    return False
 
 
 def _heuristic_topic_nodes(context: str) -> list[TopicNodeLLM]:
@@ -27,41 +40,57 @@ def _heuristic_topic_nodes(context: str) -> list[TopicNodeLLM]:
     roots: list[TopicNodeLLM] = []
     current: TopicNodeLLM | None = None
     for raw in context.splitlines():
-        line = raw.strip()
-        if not line or line.lower().startswith(("context", "citation", "source")):
+        line = raw.strip().strip("#").strip()
+        if not line or line.lower().startswith(("context", "citation", "source", "====", "----")):
             continue
         unit = _UNIT_RE.match(line)
-        if unit:
+        if unit or (
+            line.upper().startswith(("UNIT ", "CHAPTER ", "MODULE "))
+            and not _looks_like_sentence(line)
+        ):
+            title = unit.group(1).strip() if unit else line
             current = TopicNodeLLM(
-                name=line[:300],
-                description=f"Extracted from syllabus: {unit.group(1).strip()}",
+                name=title[:120],
+                description=f"Extracted from syllabus: {title}",
                 exam_importance=70.0,
-                past_paper_frequency=1 if "photosynthesis" in line.lower() else 0,
+                past_paper_frequency=1
+                if any(k in line.lower() for k in ("photosynthesis", "respiration"))
+                else 0,
                 source_sections=["syllabus"],
                 children=[],
             )
             roots.append(current)
             continue
-        bullet = _BULLET_RE.match(line)
+        bullet = _BULLET_RE.match(line) or _NUMBERED_TOPIC_RE.match(line)
         if bullet and current is not None:
-            child_name = bullet.group(1).strip()[:300]
-            if child_name:
-                current.children.append(
-                    TopicNodeLLM(
-                        name=child_name,
-                        description=f"Subtopic under {current.name}",
-                        exam_importance=60.0,
-                        past_paper_frequency=1
-                        if any(k in child_name.lower() for k in ("light", "calvin", "photosynthesis"))
-                        else 0,
-                        source_sections=["syllabus"],
-                        children=[],
-                    )
+            child_name = bullet.group(bullet.lastindex or 1).strip()[:120]
+            # Skip long prose sentences leaked from notes/textbooks.
+            if not child_name or _looks_like_sentence(child_name):
+                continue
+            if child_name.lower().startswith(("learning outcome", "exam", "priority", "assessment")):
+                continue
+            current.children.append(
+                TopicNodeLLM(
+                    name=child_name,
+                    description=f"Subtopic under {current.name}",
+                    exam_importance=60.0,
+                    past_paper_frequency=1
+                    if any(k in child_name.lower() for k in ("light", "calvin", "glycolysis", "krebs"))
+                    else 0,
+                    source_sections=["syllabus"],
+                    children=[],
                 )
+            )
     if roots:
         return roots
-    # Last resort: split into coarse topic labels from non-empty lines.
-    labels = [ln.strip()[:300] for ln in context.splitlines() if len(ln.strip()) > 3][:8]
+    # Last resort: short labels only (never full sentences).
+    labels = []
+    for ln in context.splitlines():
+        label = ln.strip()[:80]
+        if 3 < len(label) <= 60 and not _looks_like_sentence(label):
+            labels.append(label)
+        if len(labels) >= 8:
+            break
     return [
         TopicNodeLLM(
             name=label,

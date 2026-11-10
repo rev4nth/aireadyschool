@@ -103,13 +103,50 @@ async def generate_quiz(
     await db.flush()
 
     topic_by_name = {t.name.lower(): t for t in topics}
+    leaf_topics = _leaf_topics(topics) or topics
     for index, item in enumerate(questions):
-        _persist_question(db, quiz, item, index, topic_by_name, retrieved)
+        _persist_question(db, quiz, item, index, topic_by_name, leaf_topics, retrieved)
 
     await db.flush()
     await set_json(cache_key, {"quiz_id": str(quiz.id)}, ttl=settings.cache_ttl_seconds)
     logger.info("quiz.generated id=%s questions=%s", quiz.id, len(questions))
     return quiz
+
+
+def _leaf_topics(topics: list[Topic]) -> list[Topic]:
+    """Prefer concrete subtopics over unit headers when assigning questions."""
+    by_parent: dict[UUID | None, list[Topic]] = {}
+    for topic in topics:
+        by_parent.setdefault(topic.parent_id, []).append(topic)
+    leaves = [t for t in topics if t.id not in {c.parent_id for c in topics if c.parent_id}]
+    return leaves or topics
+
+
+def _resolve_topic_id(
+    topic_name: str | None,
+    topic_by_name: dict[str, Topic],
+    fallback_topics: list[Topic],
+    *,
+    index: int = 0,
+) -> UUID | None:
+    if not fallback_topics and not topic_by_name:
+        return None
+    name = (topic_name or "").strip().lower()
+    if name and name in topic_by_name:
+        return topic_by_name[name].id
+    if name:
+        # Fuzzy: topic name contains LLM label or vice versa.
+        for key, topic in topic_by_name.items():
+            if name in key or key in name:
+                return topic.id
+        for topic in fallback_topics:
+            key = topic.name.lower()
+            tokens = [tok for tok in name.replace("/", " ").split() if len(tok) > 3]
+            if tokens and sum(1 for tok in tokens if tok in key) >= max(1, len(tokens) // 2):
+                return topic.id
+    if fallback_topics:
+        return fallback_topics[index % len(fallback_topics)].id
+    return None
 
 
 def _persist_question(
@@ -118,6 +155,7 @@ def _persist_question(
     item: GeneratedQuestion,
     index: int,
     topic_by_name: dict[str, Topic],
+    fallback_topics: list[Topic],
     retrieved,
 ) -> None:
     citations = [c.model_dump(mode="json") for c in validate_citations(item.citations, retrieved)]
@@ -125,9 +163,12 @@ def _persist_question(
     if not chunk_ids and citations:
         chunk_ids = [UUID(str(c["chunk_id"])) for c in citations]
 
-    topic_id = None
-    if item.topic_name and item.topic_name.lower() in topic_by_name:
-        topic_id = topic_by_name[item.topic_name.lower()].id
+    topic_id = _resolve_topic_id(
+        item.topic_name,
+        topic_by_name,
+        fallback_topics,
+        index=index,
+    )
 
     if item.question_type == "mcq" and (not item.options or len(item.options) < 2):
         raise AppError("Generated MCQ missing options", status_code=502, code="invalid_quiz_output")

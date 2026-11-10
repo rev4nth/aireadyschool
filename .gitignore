@@ -59,3 +59,21 @@ test_materials/
 
 # OS
 Desktop.ini
+
+# Deploy secrets + one-off server probe scripts
+deploy/.env.backend.prod
+frontend/.env.production
+deploy/apply_*.py
+deploy/dbtest.py
+deploy/probe_*.py
+
+# Unwanted / internal markdown (keep root README.md + docs/DEMO_ACCOUNT.md)
+*.md
+!README.md
+!docs/DEMO_ACCOUNT.md
+docs/OPENAI_DASHBOARD_REVIEW_PROMPT.md
+**/SCENARIO.md
+**/*_PROMPT.md
+**/*_NOTES.md
+**/TODO.md
+**/CHANGELOG.md
