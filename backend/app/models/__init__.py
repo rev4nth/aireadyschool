@@ -1,0 +1,43 @@
+"""SQLAlchemy models."""
+
+from app.models.entities import (
+    AIUsageLog,
+    ChatMessage,
+    ChatSession,
+    Document,
+    DocumentChunk,
+    GapReport,
+    PastPaperQuestion,
+    Profile,
+    Quiz,
+    QuizAttempt,
+    QuizQuestion,
+    RevisionPlan,
+    RevisionTask,
+    StudentAnswer,
+    Subject,
+    Topic,
+    TopicMastery,
+    TopicMaterialLink,
+)
+
+__all__ = [
+    "Profile",
+    "Subject",
+    "Document",
+    "DocumentChunk",
+    "Topic",
+    "TopicMaterialLink",
+    "PastPaperQuestion",
+    "Quiz",
+    "QuizQuestion",
+    "QuizAttempt",
+    "StudentAnswer",
+    "TopicMastery",
+    "GapReport",
+    "RevisionPlan",
+    "RevisionTask",
+    "ChatSession",
+    "ChatMessage",
+    "AIUsageLog",
+]
