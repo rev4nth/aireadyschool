@@ -61,7 +61,16 @@ export function QuizTakePage() {
       });
     },
     onSuccess: (result) => {
-      toast.success("Quiz submitted");
+      try {
+        sessionStorage.setItem(`gapfinder:quiz-result:${quizId}`, JSON.stringify(result));
+      } catch {
+        /* ignore quota */
+      }
+      toast.success(
+        result.gap_report_id
+          ? "Submitted — gap report and revision plan refreshed"
+          : "Quiz submitted",
+      );
       navigate(`/quiz/${quizId}/results`, { state: { result } });
     },
     onError: (error) => toast.error(getErrorMessage(error)),

@@ -11,6 +11,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { getErrorMessage } from "@/lib/utils";
+import type { GapTopicItem } from "@/types";
+
+function topicReason(topic: GapTopicItem): string {
+  if (topic.reason?.trim()) return topic.reason;
+  const attempted = topic.questions_attempted ?? 0;
+  const incorrect = topic.incorrect_count ?? 0;
+  if (attempted > 0) {
+    return `You got ${incorrect} of ${attempted} questions on ${topic.topic_name || "this topic"} wrong.`;
+  }
+  return `No quiz answers yet for ${topic.topic_name || "this topic"} — marked weak until you attempt questions.`;
+}
 
 export function GapReportPage() {
   const { currentSubjectId } = useSubject();
@@ -32,12 +43,13 @@ export function GapReportPage() {
   });
 
   const latest = reportsQuery.data?.[0];
+  const topics = (latest?.topics ?? []) as GapTopicItem[];
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Gap Report"
-        description="Diagnose what you don't know — based on actual answers, not guesses."
+        title="Gap report"
+        description="Weak, medium, and strong topics from your quiz answers."
         actions={
           <Button
             onClick={() => generateMutation.mutate()}
@@ -72,19 +84,21 @@ export function GapReportPage() {
           </Card>
 
           <div className="grid gap-3">
-            {(latest.topics as Array<Record<string, unknown>>).map((topic, idx) => (
+            {topics.map((topic, idx) => (
               <Card key={String(topic.topic_id ?? idx)}>
                 <CardContent className="space-y-2 py-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="font-display text-lg font-semibold">{String(topic.topic)}</h3>
-                    <Badge>{String(topic.classification)} · {String(topic.mastery_score)}%</Badge>
+                    <h3 className="font-display text-lg font-semibold">
+                      {topic.topic_name || "Untitled topic"}
+                    </h3>
+                    <Badge>
+                      {topic.classification} · {Number(topic.mastery_score ?? 0).toFixed(0)}%
+                    </Badge>
                   </div>
-                  {!!(topic.difficulty_areas as string[] | undefined)?.length && (
-                    <p className="text-sm">
-                      Difficulty areas: {(topic.difficulty_areas as string[]).join(", ")}
-                    </p>
-                  )}
-                  <p className="text-sm text-muted-foreground">{String(topic.recommended_action)}</p>
+                  <p className="text-sm text-muted-foreground">{topicReason(topic)}</p>
+                  {topic.recommended_focus ? (
+                    <p className="text-sm">{topic.recommended_focus}</p>
+                  ) : null}
                 </CardContent>
               </Card>
             ))}

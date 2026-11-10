@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookOpenCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useSubject } from "@/contexts/SubjectContext";
+import { listGapReports } from "@/services/gapReports";
 import {
   createRevisionPlan,
   listRevisionPlans,
@@ -33,16 +34,29 @@ export function RevisionPlanPage() {
     enabled: Boolean(currentSubjectId),
   });
 
+  const gapQuery = useQuery({
+    queryKey: ["gap-reports", currentSubjectId],
+    queryFn: () => listGapReports(currentSubjectId),
+    enabled: Boolean(currentSubjectId),
+  });
+
+  const latestGapId = gapQuery.data?.[0]?.id ?? null;
+
   const createMutation = useMutation({
     mutationFn: () =>
       createRevisionPlan({
         subject_id: currentSubjectId!,
+        gap_report_id: latestGapId,
         available_days: days,
         hours_per_day: hours,
         exam_date: examDate || null,
       }),
     onSuccess: async () => {
-      toast.success("Revision plan created");
+      toast.success(
+        latestGapId
+          ? "Revision plan created from your latest gap report"
+          : "Revision plan created from current mastery",
+      );
       await queryClient.invalidateQueries({ queryKey: ["revision-plans"] });
     },
     onError: (error) => toast.error(getErrorMessage(error)),
@@ -53,8 +67,8 @@ export function RevisionPlanPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Revision Plan"
-        description="Prioritized by weakness severity + exam importance + past-paper frequency."
+        title="Revision plan"
+        description="Ordered by weakness, exam importance, and past-paper frequency. Updates after each quiz."
       />
 
       {!currentSubjectId && (
@@ -89,13 +103,18 @@ export function RevisionPlanPage() {
             <Label>Exam date</Label>
             <Input type="date" value={examDate} onChange={(e) => setExamDate(e.target.value)} />
           </div>
-          <div className="flex items-end">
+          <div className="flex flex-col justify-end gap-2">
             <Button
               onClick={() => createMutation.mutate()}
               disabled={!currentSubjectId || createMutation.isPending}
             >
               {createMutation.isPending ? "Building…" : "Create plan"}
             </Button>
+            <p className="text-xs text-muted-foreground">
+              {latestGapId
+                ? "Using latest gap report for this subject."
+                : "No gap report yet — will use mastery scores."}
+            </p>
           </div>
         </CardContent>
       </Card>

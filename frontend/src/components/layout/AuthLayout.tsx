@@ -3,16 +3,16 @@ import { BookOpenCheck } from "lucide-react";
 
 export function AuthLayout() {
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center px-4 py-10">
-      <div className="mb-8 flex items-center gap-2">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 py-10">
+      <div className="mb-8 flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
           <BookOpenCheck className="h-5 w-5" />
         </div>
         <div>
-          <Link to="/" className="font-display text-xl font-semibold tracking-tight">
-            GapFinder AI
+          <Link to="/" className="text-lg font-semibold tracking-tight">
+            GapFinder
           </Link>
-          <p className="text-xs text-muted-foreground">Find gaps. Study smarter.</p>
+          <p className="text-xs text-muted-foreground">Diagnose weak topics. Plan revision.</p>
         </div>
       </div>
       <div className="w-full max-w-md">

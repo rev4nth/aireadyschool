@@ -51,6 +51,9 @@ backend/uploads/
 backend/tmp/
 *.pdf.tmp
 
+# Local judge/manual test packs (not for commit)
+test_materials/
+
 # Docker
 .docker/
 

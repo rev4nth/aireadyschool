@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getQuiz } from "@/services/quizzes";
@@ -12,10 +13,45 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
 }
 
+function resultStorageKey(quizId: string) {
+  return `gapfinder:quiz-result:${quizId}`;
+}
+
+function formatCitation(c: Citation): string {
+  const parts = [
+    c.document_title ?? "Uploaded material",
+    c.section_heading ? `§ ${c.section_heading}` : null,
+    c.page_number != null ? `p.${c.page_number}` : null,
+  ].filter(Boolean);
+  return parts.join(" · ");
+}
+
 export function QuizResultsPage() {
   const { quizId = "" } = useParams();
   const location = useLocation();
-  const result = (location.state as { result?: QuizResult } | null)?.result;
+  const stateResult = (location.state as { result?: QuizResult } | null)?.result;
+  const [storedResult, setStoredResult] = useState<QuizResult | null>(null);
+
+  useEffect(() => {
+    if (!quizId) return;
+    if (stateResult) {
+      try {
+        sessionStorage.setItem(resultStorageKey(quizId), JSON.stringify(stateResult));
+      } catch {
+        /* ignore quota */
+      }
+      setStoredResult(stateResult);
+      return;
+    }
+    try {
+      const raw = sessionStorage.getItem(resultStorageKey(quizId));
+      setStoredResult(raw ? (JSON.parse(raw) as QuizResult) : null);
+    } catch {
+      setStoredResult(null);
+    }
+  }, [quizId, stateResult]);
+
+  const result = stateResult ?? storedResult;
 
   const quizQuery = useQuery({
     queryKey: ["quiz", quizId],
@@ -46,11 +82,17 @@ export function QuizResultsPage() {
 
   const questions: QuizQuestion[] = result?.questions ?? quizQuery.data?.questions ?? [];
 
+  const questionById = useMemo(() => {
+    const map = new Map<string, QuizQuestion>();
+    for (const q of questions) map.set(q.id, q);
+    return map;
+  }, [questions]);
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Quiz results"
-        description="Answers are revealed only after submission."
+        description="Answers are revealed only after submission. Gap report and revision plan refresh automatically."
         actions={
           <div className="flex gap-2">
             <Link
@@ -58,6 +100,12 @@ export function QuizResultsPage() {
               className="inline-flex h-10 items-center rounded-md border border-border px-4 text-sm font-medium hover:bg-muted"
             >
               View gap report
+            </Link>
+            <Link
+              to="/revision"
+              className="inline-flex h-10 items-center rounded-md border border-border px-4 text-sm font-medium hover:bg-muted"
+            >
+              Revision plan
             </Link>
             <Link
               to="/quiz"
@@ -83,6 +131,11 @@ export function QuizResultsPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               {percentage != null ? <Progress value={percentage} /> : null}
+              {result.gap_report_id ? (
+                <p className="text-sm text-muted-foreground">
+                  Diagnosis updated. Gap report and any active revision plan were refreshed from this attempt.
+                </p>
+              ) : null}
               {Object.entries(result.topic_performance || {}).map(([id, perf]) => {
                 const row = asRecord(perf);
                 return (
@@ -100,7 +153,7 @@ export function QuizResultsPage() {
 
           <div className="space-y-3">
             {evaluations.map((ev) => {
-              const question = questions.find((q) => q.id === ev.question_id);
+              const question = questionById.get(ev.question_id);
               const evaluation = asRecord(ev.evaluation) ?? {};
               const explanation =
                 (evaluation.feedback as string | undefined) ||
@@ -109,9 +162,12 @@ export function QuizResultsPage() {
               const corrected =
                 (evaluation.corrected_answer as string | undefined) ||
                 ((ev as { corrected_answer?: string }).corrected_answer ?? null);
-              const citations =
+              const citations = (
                 ((evaluation.citations as Citation[] | undefined) ||
-                  ((ev as { citations?: Citation[] }).citations ?? [])) as Citation[];
+                  ((ev as { citations?: Citation[] }).citations ?? []) ||
+                  question?.citations ||
+                  []) as Citation[]
+              ).filter(Boolean);
 
               return (
                 <Card key={ev.question_id}>
@@ -143,14 +199,16 @@ export function QuizResultsPage() {
                       </p>
                     ) : null}
                     {citations.length > 0 ? (
-                      <div className="text-xs text-muted-foreground">
-                        Sources:{" "}
-                        {citations
-                          .map(
-                            (c) =>
-                              `${c.document_title ?? "doc"}${c.page_number ? ` p.${c.page_number}` : ""}`,
-                          )
-                          .join(" · ")}
+                      <div className="space-y-1 text-xs text-muted-foreground">
+                        <p className="font-medium text-foreground">Sources</p>
+                        {citations.map((c, idx) => (
+                          <div key={`${c.chunk_id ?? idx}`}>
+                            <p>{formatCitation(c)}</p>
+                            {c.excerpt ? (
+                              <p className="mt-0.5 line-clamp-2 italic opacity-90">“{c.excerpt}”</p>
+                            ) : null}
+                          </div>
+                        ))}
                       </div>
                     ) : null}
                   </CardContent>
@@ -163,8 +221,8 @@ export function QuizResultsPage() {
         <Card>
           <CardContent className="space-y-3 py-6 text-sm text-muted-foreground">
             <p>
-              No result payload in session. Open results from a completed attempt, or generate a gap
-              report after taking a quiz.
+              No saved result for this quiz in this browser session. Complete a quiz to see scored
+              answers with citations, or open Gap Report after an attempt.
             </p>
             {quizQuery.data ? <p>Quiz: {quizQuery.data.title}</p> : null}
             <Link

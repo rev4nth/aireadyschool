@@ -26,6 +26,7 @@ _FALLBACK_MARKERS = (
     "server error",
     "unavailable",
     "overloaded",
+    "invalid structured output",
     "503",
     "502",
     "500",
@@ -35,8 +36,13 @@ _FALLBACK_MARKERS = (
 
 
 def _is_fallback_eligible(exc: BaseException) -> bool:
+    code = getattr(exc, "code", None)
+    if code in {"invalid_structured_output"}:
+        return True
     if isinstance(exc, AppError) and not isinstance(exc, ProviderError):
-        return False
+        # Allow structured-output parse failures to try Groq.
+        message = str(getattr(exc, "message", exc)).lower()
+        return "invalid structured output" in message
     message = str(getattr(exc, "message", exc)).lower()
     return any(marker in message for marker in _FALLBACK_MARKERS)
 

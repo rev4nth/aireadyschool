@@ -9,12 +9,14 @@ export function AppLayout() {
 
   return (
     <SubjectProvider>
-      <div className="flex min-h-screen">
+      <div className="flex min-h-screen bg-background">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <div className="flex min-w-0 flex-1 flex-col">
           <Header onMenuClick={() => setSidebarOpen(true)} />
-          <main className="flex-1 px-4 py-6 md:px-6">
-            <Outlet />
+          <main className="flex-1 px-4 py-5 md:px-6 md:py-6">
+            <div className="mx-auto w-full max-w-6xl">
+              <Outlet />
+            </div>
           </main>
         </div>
       </div>

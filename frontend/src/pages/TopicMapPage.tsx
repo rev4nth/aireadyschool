@@ -85,6 +85,12 @@ function TopicNodeRow({
             </button>
           )}
         </div>
+        <Badge variant="outline" title="Exam importance">
+          Exam {Math.round(topic.exam_importance ?? 0)}
+        </Badge>
+        <Badge variant="secondary" title="Past-paper frequency">
+          Papers ×{topic.past_paper_frequency ?? 0}
+        </Badge>
         <Badge variant={mastery.variant}>{mastery.label}</Badge>
         <span className="w-10 text-right text-xs text-muted-foreground">
           {Math.round(topic.mastery_score)}%
@@ -154,7 +160,7 @@ export function TopicMapPage() {
     <div>
       <PageHeader
         title="Topic Map"
-        description="Hierarchical syllabus topics with mastery badges. Click a name to edit."
+        description="Syllabus hierarchy with mastery, exam importance, and past-paper frequency. Click a name to edit."
         actions={
           <Button
             disabled={generateMutation.isPending}

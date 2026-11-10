@@ -30,25 +30,29 @@ async def process_document(session: AsyncSession, document_id: UUID) -> Document
     await session.flush()
 
     try:
-        if not document.storage_path:
-            raise AppError("Document has no storage path", status_code=400, code="missing_source")
-
-        data = await download_bytes(document.storage_path)
         mime = (document.mime_type or "").lower()
         name = (document.file_name or document.title or "").lower()
+        meta = document.metadata_ or {}
+        inline_text = meta.get("text_content") if isinstance(meta, dict) else None
 
-        if "pdf" in mime or name.endswith(".pdf"):
-            extracted = extract_pdf_bytes(data, filename=document.file_name or document.title)
+        if inline_text and not ("pdf" in mime or name.endswith(".pdf")):
+            extracted = extract_plain_text(str(inline_text), title=document.title)
         else:
-            try:
-                text = data.decode("utf-8")
-            except UnicodeDecodeError as exc:
-                raise AppError(
-                    "Unsupported file encoding. Upload a PDF or UTF-8 text file.",
-                    status_code=400,
-                    code="unsupported_encoding",
-                ) from exc
-            extracted = extract_plain_text(text, title=document.title)
+            if not document.storage_path:
+                raise AppError("Document has no storage path", status_code=400, code="missing_source")
+            data = await download_bytes(document.storage_path)
+            if "pdf" in mime or name.endswith(".pdf"):
+                extracted = extract_pdf_bytes(data, filename=document.file_name or document.title)
+            else:
+                try:
+                    text = data.decode("utf-8")
+                except UnicodeDecodeError as exc:
+                    raise AppError(
+                        "Unsupported file encoding. Upload a PDF or UTF-8 text file.",
+                        status_code=400,
+                        code="unsupported_encoding",
+                    ) from exc
+                extracted = extract_plain_text(text, title=document.title)
 
         chunks = chunk_pages(extracted.pages)
         if not chunks:

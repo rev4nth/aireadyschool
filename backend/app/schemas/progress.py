@@ -23,10 +23,20 @@ class DashboardResponse(BaseModel):
     welcome_name: str | None = None
     study_streak: int = 0
     current_subject_id: UUID | None = None
+    subject_name: str | None = None
     upcoming_tasks: list[dict[str, Any]] = Field(default_factory=list)
     recent_gap_summary: str | None = None
+    gap_weak_count: int = 0
+    gap_medium_count: int = 0
+    gap_strong_count: int = 0
+    weak_topic_preview: list[str] = Field(default_factory=list)
     overall_mastery: float = 0.0
     weak_topic_count: int = 0
+    medium_topic_count: int = 0
+    strong_topic_count: int = 0
+    quizzes_completed: int = 0
+    plan_completion_pct: float = 0.0
+    improvement_pct: float = 0.0
 
 
 class AnalyticsResponse(BaseModel):

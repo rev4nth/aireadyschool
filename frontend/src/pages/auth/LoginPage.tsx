@@ -50,7 +50,7 @@ export function LoginPage() {
     <Card>
       <CardHeader>
         <CardTitle>Sign in</CardTitle>
-        <CardDescription>Access your personalized study workspace.</CardDescription>
+        <CardDescription>Use your account or the demo login below.</CardDescription>
       </CardHeader>
       <CardContent>
         <form className="space-y-4" onSubmit={onSubmit}>
@@ -81,9 +81,15 @@ export function LoginPage() {
             Create one
           </Link>
         </p>
-        <p className="mt-4 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-          Demo account: configure via Supabase; see README
-        </p>
+        <div className="mt-4 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground space-y-1">
+          <p className="font-medium text-foreground">Demo login (judges)</p>
+          <p>
+            Email: <span className="font-mono text-foreground">demo@gapfinder.ai</span>
+          </p>
+          <p>
+            Password: <span className="font-mono text-foreground">GapFinderDemo2026!</span>
+          </p>
+        </div>
       </CardContent>
     </Card>
   );

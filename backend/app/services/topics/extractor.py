@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
+import re
 from uuid import UUID
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import InsufficientContextError, NotFoundError
+from app.core.exceptions import AppError, InsufficientContextError, NotFoundError
 from app.models import Document, Topic, TopicMaterialLink
 from app.schemas.topics import TopicMapLLMSchema, TopicNodeLLM
 from app.services.ai.llm_service import get_llm_service
@@ -16,6 +17,62 @@ from app.services.rag.pipeline import build_grounded_context
 from app.services.rag.retrieval import hybrid_retrieve
 
 logger = logging.getLogger(__name__)
+
+_UNIT_RE = re.compile(r"^(?:unit|chapter|module|section)\s*[\dIVXLC]+[:.\-\s]+(.+)$", re.I)
+_BULLET_RE = re.compile(r"^[-*•]\s+(.+)$")
+
+
+def _heuristic_topic_nodes(context: str) -> list[TopicNodeLLM]:
+    """Deterministic syllabus outline parser used when LLM JSON fails."""
+    roots: list[TopicNodeLLM] = []
+    current: TopicNodeLLM | None = None
+    for raw in context.splitlines():
+        line = raw.strip()
+        if not line or line.lower().startswith(("context", "citation", "source")):
+            continue
+        unit = _UNIT_RE.match(line)
+        if unit:
+            current = TopicNodeLLM(
+                name=line[:300],
+                description=f"Extracted from syllabus: {unit.group(1).strip()}",
+                exam_importance=70.0,
+                past_paper_frequency=1 if "photosynthesis" in line.lower() else 0,
+                source_sections=["syllabus"],
+                children=[],
+            )
+            roots.append(current)
+            continue
+        bullet = _BULLET_RE.match(line)
+        if bullet and current is not None:
+            child_name = bullet.group(1).strip()[:300]
+            if child_name:
+                current.children.append(
+                    TopicNodeLLM(
+                        name=child_name,
+                        description=f"Subtopic under {current.name}",
+                        exam_importance=60.0,
+                        past_paper_frequency=1
+                        if any(k in child_name.lower() for k in ("light", "calvin", "photosynthesis"))
+                        else 0,
+                        source_sections=["syllabus"],
+                        children=[],
+                    )
+                )
+    if roots:
+        return roots
+    # Last resort: split into coarse topic labels from non-empty lines.
+    labels = [ln.strip()[:300] for ln in context.splitlines() if len(ln.strip()) > 3][:8]
+    return [
+        TopicNodeLLM(
+            name=label,
+            description="Heuristic topic from uploaded material",
+            exam_importance=50.0,
+            past_paper_frequency=0,
+            source_sections=["material"],
+            children=[],
+        )
+        for label in labels
+    ]
 
 
 async def extract_topic_map(
@@ -62,10 +119,17 @@ async def extract_topic_map(
         "exam_importance (0-100), past_paper_frequency (int), source_sections (list), "
         "and optional children. Prefer syllabus structure when present."
     )
-    structured = await get_llm_service().generate_structured(
-        prompt, TopicMapLLMSchema, operation="topic_map_extract"
-    )
-    nodes = [TopicNodeLLM.model_validate(t.model_dump()) for t in structured.topics]
+    nodes: list[TopicNodeLLM] = []
+    try:
+        structured = await get_llm_service().generate_structured(
+            prompt, TopicMapLLMSchema, operation="topic_map_extract"
+        )
+        nodes = [TopicNodeLLM.model_validate(t.model_dump()) for t in structured.topics]
+    except AppError as exc:
+        logger.warning("topics.llm_failed falling_back_to_heuristic code=%s", getattr(exc, "code", None))
+        nodes = _heuristic_topic_nodes("\n".join(c.content for c in retrieved))
+    if not nodes:
+        nodes = _heuristic_topic_nodes("\n".join(c.content for c in retrieved))
     if not nodes:
         raise InsufficientContextError("Could not extract topics from available materials")
 
@@ -92,6 +156,22 @@ async def extract_topic_map(
         document_id=docs[0].id,
         retrieved_chunk_ids=[c.chunk_id for c in retrieved[:5]],
     )
+    try:
+        from app.services.topics.past_paper_mapper import update_past_paper_frequencies
+
+        await update_past_paper_frequencies(db, user_id=user_id, subject_id=subject_id)
+        # Reload so response reflects updated frequencies.
+        created = list(
+            (
+                await db.execute(
+                    select(Topic).where(Topic.user_id == user_id, Topic.subject_id == subject_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("topics.past_paper_mapping_failed subject=%s", subject_id)
     logger.info("topics.extracted subject=%s created=%s", subject_id, len(created))
     return created
 

@@ -122,3 +122,5 @@ class QuizResultResponse(BaseModel):
     answers: list[AnswerResult] = Field(default_factory=list)
     evaluations: list[AnswerResult] = Field(default_factory=list)
     questions: list[QuizQuestionFull] = Field(default_factory=list)
+    gap_report_id: UUID | None = None
+    revision_plan_ids: list[UUID] = Field(default_factory=list)

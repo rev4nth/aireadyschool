@@ -4,6 +4,7 @@ import { FileUp, RefreshCw, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useSubject } from "@/contexts/SubjectContext";
 import {
+  createTextMaterial,
   deleteMaterial,
   listMaterials,
   reprocessMaterial,
@@ -16,10 +17,49 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Select } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { formatBytes, getErrorMessage, cn } from "@/lib/utils";
+
+const SAMPLE_PACK = {
+  syllabus: `Biology Syllabus — Cells, Photosynthesis, Respiration
+
+Unit 1: Cell Structure
+- Cell membrane
+- Nucleus
+- Mitochondria
+
+Unit 2: Photosynthesis
+- Light reaction
+- Dark reaction / Calvin cycle
+- Chlorophyll and chloroplasts
+
+Unit 3: Respiration
+- Glycolysis
+- Krebs cycle
+
+Exam weightage: Photosynthesis HIGH; Cell organelles MEDIUM.`,
+  notes: `Textbook notes — Biology
+
+The cell membrane controls what enters and leaves the cell. Mitochondria produce ATP through cellular respiration. Chloroplasts contain chlorophyll.
+
+Photosynthesis converts light energy into chemical energy. The light reaction occurs in thylakoid membranes and produces ATP and NADPH. The Calvin cycle fixes carbon dioxide into glucose in the stroma and uses ATP and NADPH. Chlorophyll absorbs light energy.
+
+Glycolysis breaks down glucose in the cytoplasm.`,
+  past_paper: `Past paper questions — Biology
+
+Q1: Where does the light reaction take place? (thylakoid membranes)
+Q2: Name two products of the light reaction used in the Calvin cycle. (ATP, NADPH)
+Q3: Where does the Calvin cycle occur? (stroma)
+Q4: Why are mitochondria called the powerhouse of the cell?
+Q5: In which part of the cell does glycolysis occur? (cytoplasm)
+
+Frequency note: Photosynthesis light reaction and Calvin cycle appear most often.`,
+};
 
 function statusVariant(status: string): "muted" | "warning" | "success" | "danger" {
   switch (status as DocStatus) {
@@ -36,11 +76,14 @@ function statusVariant(status: string): "muted" | "warning" | "success" | "dange
 }
 
 export function MaterialsPage() {
-  const { currentSubjectId } = useSubject();
+  const { currentSubjectId, currentSubject, subjects, setCurrentSubjectId, refetch: refetchSubjects } =
+    useSubject();
   const queryClient = useQueryClient();
   const [dragOver, setDragOver] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [docType, setDocType] = useState("notes");
+  const [pasteTitle, setPasteTitle] = useState("");
+  const [pasteContent, setPasteContent] = useState("");
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["materials", currentSubjectId],
@@ -75,6 +118,71 @@ export function MaterialsPage() {
       setUploadPct(null);
       toast.error(getErrorMessage(err, "Upload failed"));
     },
+  });
+
+  const pasteMutation = useMutation({
+    mutationFn: () => {
+      if (!currentSubjectId) throw new Error("Select a subject first");
+      if (!pasteContent.trim()) throw new Error("Paste some study text first");
+      return createTextMaterial({
+        subject_id: currentSubjectId,
+        title: pasteTitle.trim() || `${docType} paste`,
+        content: pasteContent,
+        doc_type: docType,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Text material saved and processing");
+      setPasteContent("");
+      setPasteTitle("");
+      invalidate();
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Could not save text")),
+  });
+
+  const sampleMutation = useMutation({
+    mutationFn: async () => {
+      const { createSubject } = await import("@/services/subjects");
+      const biologyName = "Biology – Cells & Photosynthesis";
+      let target =
+        subjects.find((s) => s.name.toLowerCase().includes("biology")) ??
+        subjects.find((s) => s.name === biologyName) ??
+        null;
+      if (!target) {
+        target = await createSubject({
+          name: biologyName,
+          description: "Sample subject for GapFinder demo materials",
+        });
+        refetchSubjects();
+      }
+      setCurrentSubjectId(target.id);
+      await createTextMaterial({
+        subject_id: target.id,
+        title: "Sample syllabus",
+        content: SAMPLE_PACK.syllabus,
+        doc_type: "syllabus",
+      });
+      await createTextMaterial({
+        subject_id: target.id,
+        title: "Sample notes",
+        content: SAMPLE_PACK.notes,
+        doc_type: "notes",
+      });
+      await createTextMaterial({
+        subject_id: target.id,
+        title: "Sample past papers",
+        content: SAMPLE_PACK.past_paper,
+        doc_type: "past_paper",
+      });
+      return target.name;
+    },
+    onSuccess: async (subjectName) => {
+      toast.success(`Sample pack uploaded under “${subjectName}” (not the previous subject)`);
+      await queryClient.invalidateQueries({ queryKey: ["materials"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      await queryClient.invalidateQueries({ queryKey: ["subjects"] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Sample upload failed")),
   });
 
   const deleteMutation = useMutation({
@@ -124,12 +232,32 @@ export function MaterialsPage() {
     <div>
       <PageHeader
         title="My Materials"
-        description="Upload syllabi, notes, and past papers for grounded AI study tools."
+        description={`Uploads go to “${currentSubject?.name ?? "selected subject"}”. Sample Biology pack always targets a Biology subject.`}
+        actions={
+          <Button
+            variant="outline"
+            disabled={sampleMutation.isPending}
+            onClick={() => {
+              if (
+                currentSubject &&
+                !currentSubject.name.toLowerCase().includes("biology") &&
+                !window.confirm(
+                  `Current subject is “${currentSubject.name}”. Sample Biology pack will switch to / create a Biology subject. Continue?`,
+                )
+              ) {
+                return;
+              }
+              sampleMutation.mutate();
+            }}
+          >
+            {sampleMutation.isPending ? "Loading sample…" : "Load sample Biology pack"}
+          </Button>
+        }
       />
 
       <Card className="mb-6">
         <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
-          <CardTitle className="text-base">Upload</CardTitle>
+          <CardTitle className="text-base">Upload file</CardTitle>
           <Select className="w-40" value={docType} onChange={(e) => setDocType(e.target.value)}>
             <option value="syllabus">Syllabus</option>
             <option value="textbook">Textbook</option>
@@ -174,6 +302,39 @@ export function MaterialsPage() {
               <Progress value={uploadPct} />
             </div>
           ) : null}
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="text-base">Paste text</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="paste-title">Title</Label>
+            <Input
+              id="paste-title"
+              placeholder="e.g. Chapter 3 notes"
+              value={pasteTitle}
+              onChange={(e) => setPasteTitle(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="paste-content">Content</Label>
+            <Textarea
+              id="paste-content"
+              rows={8}
+              placeholder="Paste syllabus, notes, or past-paper text…"
+              value={pasteContent}
+              onChange={(e) => setPasteContent(e.target.value)}
+            />
+          </div>
+          <Button
+            onClick={() => pasteMutation.mutate()}
+            disabled={pasteMutation.isPending || !pasteContent.trim()}
+          >
+            {pasteMutation.isPending ? "Saving…" : "Save pasted material"}
+          </Button>
         </CardContent>
       </Card>
 

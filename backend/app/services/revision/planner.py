@@ -44,6 +44,14 @@ async def generate_revision_plan(
         gap_report = await db.get(GapReport, request.gap_report_id)
         if gap_report is None or gap_report.user_id != user_id:
             raise NotFoundError("Gap report not found")
+    else:
+        latest = await db.execute(
+            select(GapReport)
+            .where(GapReport.user_id == user_id, GapReport.subject_id == request.subject_id)
+            .order_by(GapReport.created_at.desc())
+            .limit(1)
+        )
+        gap_report = latest.scalar_one_or_none()
 
     topics = await _load_topic_inputs(db, user_id, request.subject_id, gap_report)
     available_minutes = int(request.available_days * request.hours_per_day * 60)
@@ -52,7 +60,7 @@ async def generate_revision_plan(
     plan = RevisionPlan(
         user_id=user_id,
         subject_id=subject.id,
-        gap_report_id=request.gap_report_id,
+        gap_report_id=gap_report.id if gap_report else request.gap_report_id,
         title=request.title or f"{subject.name} revision plan",
         exam_date=request.exam_date or subject.exam_date,
         available_days=request.available_days,
@@ -91,7 +99,19 @@ async def recalculate_revision_plan(db: AsyncSession, plan: RevisionPlan) -> Rev
     completed_minutes = sum(t.duration_minutes for t in completed_tasks)
     available_minutes = max(0, int(days * hours * 60) - completed_minutes)
 
-    gap_report = await db.get(GapReport, plan.gap_report_id) if plan.gap_report_id else None
+    gap_report = None
+    if plan.gap_report_id:
+        gap_report = await db.get(GapReport, plan.gap_report_id)
+    if gap_report is None:
+        latest = await db.execute(
+            select(GapReport)
+            .where(GapReport.user_id == plan.user_id, GapReport.subject_id == plan.subject_id)
+            .order_by(GapReport.created_at.desc())
+            .limit(1)
+        )
+        gap_report = latest.scalar_one_or_none()
+        if gap_report is not None:
+            plan.gap_report_id = gap_report.id
     topics = await _load_topic_inputs(db, plan.user_id, plan.subject_id, gap_report)
     completed_topic_ids = {t.topic_id for t in completed_tasks if t.topic_id}
     topics = [t for t in topics if t["topic_id"] not in completed_topic_ids]

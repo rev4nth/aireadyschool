@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Flame, LogOut, Menu, Moon, Sun, UserRound } from "lucide-react";
+import { LogOut, Menu, Moon, Sun, UserRound } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useSubject } from "@/contexts/SubjectContext";
@@ -30,20 +30,20 @@ export function Header({ onMenuClick }: HeaderProps) {
     profile?.full_name || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Student";
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur md:px-6">
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-card px-4 md:px-6">
       <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenuClick} aria-label="Open menu">
         <Menu />
       </Button>
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-muted-foreground">Welcome back,</p>
-        <p className="truncate font-display text-lg font-semibold leading-tight">{displayName}</p>
+        <p className="truncate text-sm font-medium text-foreground">{displayName}</p>
       </div>
 
-      <div className="hidden items-center gap-2 sm:flex">
+      <div className="flex min-w-0 items-center gap-2">
+        <label className="hidden text-xs font-medium text-muted-foreground sm:block">Subject</label>
         <Select
           aria-label="Current subject"
-          className="w-44"
+          className="h-9 w-[min(100%,220px)] border-border bg-background"
           value={currentSubjectId ?? ""}
           onChange={(e) => setCurrentSubjectId(e.target.value || null)}
         >
@@ -58,12 +58,6 @@ export function Header({ onMenuClick }: HeaderProps) {
         </Select>
       </div>
 
-      <div className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-sm">
-        <Flame className="h-4 w-4 text-warning" />
-        <span className="font-medium">{profile?.study_streak ?? 0}</span>
-        <span className="hidden text-muted-foreground sm:inline">day streak</span>
-      </div>
-
       <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
         {theme === "dark" ? <Sun /> : <Moon />}
       </Button>
@@ -72,6 +66,7 @@ export function Header({ onMenuClick }: HeaderProps) {
         <Button
           variant="outline"
           size="icon"
+          className="h-9 w-9"
           aria-label="Profile menu"
           onClick={() => setMenuOpen((v) => !v)}
         >
@@ -79,10 +74,13 @@ export function Header({ onMenuClick }: HeaderProps) {
         </Button>
         <div
           className={cn(
-            "absolute right-0 mt-2 w-48 rounded-lg border border-border bg-popover p-1 shadow-lg transition",
+            "absolute right-0 mt-2 w-44 rounded-lg border border-border bg-popover p-1 shadow-md transition",
             menuOpen ? "visible opacity-100" : "invisible opacity-0",
           )}
         >
+          <div className="border-b border-border px-3 py-2">
+            <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
+          </div>
           <Link
             to="/profile"
             className="block rounded-md px-3 py-2 text-sm hover:bg-muted"

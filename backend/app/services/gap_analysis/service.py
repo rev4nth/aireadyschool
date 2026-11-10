@@ -73,10 +73,13 @@ async def build_gap_report(
                 "mastery_score": result.mastery_score,
                 "classification": result.classification,
                 "questions_attempted": result.questions_attempted,
+                "correct_count": result.correct_count,
+                "incorrect_count": result.incorrect_count,
                 "recent_score": result.recent_score,
                 "historical_avg": result.historical_avg,
                 "confidence": result.confidence,
                 "evidence": result.evidence,
+                "reason": _build_reason(topic.name, result),
                 "recommended_focus": _recommend_focus(result.classification, topic.name),
                 "formula": result.formula,
             }
@@ -175,6 +178,31 @@ async def _upsert_topic_mastery(
     row.evidence = result.evidence
     await db.flush()
     return row
+
+
+def _build_reason(topic_name: str, result: MasteryResult) -> str:
+    attempted = int(result.questions_attempted or 0)
+    incorrect = int(result.incorrect_count or 0)
+    correct = int(result.correct_count or 0)
+    if attempted <= 0:
+        return (
+            f"No quiz answers yet for {topic_name} — marked weak until you attempt "
+            "questions on this topic."
+        )
+
+    misconceptions = [
+        str(item.get("misconception")).strip()
+        for item in (result.evidence or [])
+        if isinstance(item, dict) and item.get("misconception")
+    ]
+    top_misconception = next((m for m in misconceptions if m), None)
+
+    base = f"You got {incorrect} of {attempted} questions on {topic_name} wrong"
+    if correct and incorrect == 0:
+        base = f"You got {correct} of {attempted} questions on {topic_name} correct"
+    if top_misconception:
+        return f"{base}, mostly about {top_misconception}."
+    return f"{base}."
 
 
 def _recommend_focus(classification: str, topic_name: str) -> str:

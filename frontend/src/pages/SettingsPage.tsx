@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { createSubject, listSubjects } from "@/services/subjects";
+import { createSubject, deleteSubject, listSubjects } from "@/services/subjects";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useSubject } from "@/contexts/SubjectContext";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -13,6 +15,7 @@ import { getErrorMessage } from "@/lib/utils";
 
 export function SettingsPage() {
   const { theme, setTheme } = useTheme();
+  const { currentSubjectId, setCurrentSubjectId } = useSubject();
   const queryClient = useQueryClient();
   const subjectsQuery = useQuery({ queryKey: ["subjects"], queryFn: listSubjects });
   const [name, setName] = useState("");
@@ -34,6 +37,24 @@ export function SettingsPage() {
       await queryClient.invalidateQueries({ queryKey: ["subjects"] });
     },
     onError: (error) => toast.error(getErrorMessage(error)),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (subjectId: string) => deleteSubject(subjectId),
+    onSuccess: async (_data, subjectId) => {
+      toast.success("Subject deleted");
+      if (currentSubjectId === subjectId) {
+        const remaining = (subjectsQuery.data ?? []).filter((s) => s.id !== subjectId);
+        setCurrentSubjectId(remaining[0]?.id ?? null);
+      }
+      await queryClient.invalidateQueries({ queryKey: ["subjects"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      await queryClient.invalidateQueries({ queryKey: ["materials"] });
+      await queryClient.invalidateQueries({ queryKey: ["topics"] });
+      await queryClient.invalidateQueries({ queryKey: ["gap-reports"] });
+      await queryClient.invalidateQueries({ queryKey: ["revision-plans"] });
+    },
+    onError: (error) => toast.error(getErrorMessage(error, "Could not delete subject")),
   });
 
   return (
@@ -86,9 +107,29 @@ export function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
           {subjectsQuery.data?.map((s) => (
-            <div key={s.id} className="flex justify-between rounded-md border border-border px-3 py-2">
-              <span>{s.name}</span>
-              <span className="text-muted-foreground">{s.exam_date || "No exam date"}</span>
+            <div
+              key={s.id}
+              className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
+            >
+              <div className="min-w-0">
+                <p className="truncate font-medium">{s.name}</p>
+                <p className="text-xs text-muted-foreground">{s.exam_date || "No exam date"}</p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0 text-destructive hover:bg-destructive/5 hover:text-destructive"
+                disabled={deleteMutation.isPending}
+                onClick={() => {
+                  const ok = window.confirm(
+                    `Delete “${s.name}”? This removes its materials, topics, quizzes, gap reports, and plans.`,
+                  );
+                  if (ok) deleteMutation.mutate(s.id);
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </Button>
             </div>
           ))}
           {!subjectsQuery.data?.length && (

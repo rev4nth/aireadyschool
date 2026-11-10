@@ -1,11 +1,11 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap");
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -35,64 +35,64 @@
 
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.75rem;
 }
 
 :root {
-  --background: #f4f7f8;
-  --foreground: #0f1c24;
+  --background: #f7f8fa;
+  --foreground: #12161c;
   --card: #ffffff;
-  --card-foreground: #0f1c24;
+  --card-foreground: #12161c;
   --popover: #ffffff;
-  --popover-foreground: #0f1c24;
-  --primary: #0f766e;
-  --primary-foreground: #f0fdfa;
-  --secondary: #e8eef2;
-  --secondary-foreground: #1e3340;
-  --muted: #eef2f4;
-  --muted-foreground: #5b6f7c;
-  --accent: #d9f3ef;
-  --accent-foreground: #115e59;
-  --destructive: #dc2626;
-  --destructive-foreground: #fff5f5;
-  --border: #d7e0e6;
-  --input: #d7e0e6;
-  --ring: #0d9488;
-  --success: #059669;
-  --warning: #d97706;
-  --sidebar: #f8fbfb;
-  --sidebar-foreground: #1e3340;
-  --sidebar-border: #dce5ea;
-  --sidebar-accent: #e6f5f2;
+  --popover-foreground: #12161c;
+  --primary: #0b6e63;
+  --primary-foreground: #f4fffc;
+  --secondary: #eef1f4;
+  --secondary-foreground: #243040;
+  --muted: #f0f2f5;
+  --muted-foreground: #667085;
+  --accent: #e7f5f2;
+  --accent-foreground: #0b6e63;
+  --destructive: #c62828;
+  --destructive-foreground: #fff7f7;
+  --border: #e4e7ec;
+  --input: #e4e7ec;
+  --ring: #0b6e63;
+  --success: #1b7f5a;
+  --warning: #b54708;
+  --sidebar: #111827;
+  --sidebar-foreground: #e5e7eb;
+  --sidebar-border: #1f2937;
+  --sidebar-accent: #1f2937;
 }
 
 .dark {
-  --background: #0b1419;
-  --foreground: #e8eef2;
-  --card: #121c23;
-  --card-foreground: #e8eef2;
-  --popover: #121c23;
-  --popover-foreground: #e8eef2;
-  --primary: #2dd4bf;
-  --primary-foreground: #042f2e;
-  --secondary: #1a2831;
-  --secondary-foreground: #d5dee5;
-  --muted: #18242c;
-  --muted-foreground: #93a4b0;
-  --accent: #16343a;
-  --accent-foreground: #99f6e4;
-  --destructive: #f87171;
-  --destructive-foreground: #450a0a;
-  --border: #24333d;
-  --input: #24333d;
-  --ring: #2dd4bf;
-  --success: #34d399;
-  --warning: #fbbf24;
-  --sidebar: #0e171d;
-  --sidebar-foreground: #d5dee5;
-  --sidebar-border: #1f2d36;
-  --sidebar-accent: #143038;
+  --background: #0b0f14;
+  --foreground: #e8edf2;
+  --card: #121820;
+  --card-foreground: #e8edf2;
+  --popover: #121820;
+  --popover-foreground: #e8edf2;
+  --primary: #2bbbad;
+  --primary-foreground: #062a27;
+  --secondary: #1a222d;
+  --secondary-foreground: #d5dee8;
+  --muted: #161d26;
+  --muted-foreground: #93a1b0;
+  --accent: #143039;
+  --accent-foreground: #9fe8dc;
+  --destructive: #f07171;
+  --destructive-foreground: #3b0a0a;
+  --border: #243041;
+  --input: #243041;
+  --ring: #2bbbad;
+  --success: #3dba86;
+  --warning: #f0a04b;
+  --sidebar: #090d12;
+  --sidebar-foreground: #d7dee7;
+  --sidebar-border: #1a222d;
+  --sidebar-accent: #151c25;
 }
 
 @layer base {
@@ -106,15 +106,6 @@
 
   body {
     @apply min-h-screen bg-background font-sans text-foreground;
-    background-image:
-      radial-gradient(ellipse 80% 50% at 0% -20%, color-mix(in oklab, var(--primary) 12%, transparent), transparent),
-      radial-gradient(ellipse 60% 40% at 100% 0%, color-mix(in oklab, var(--accent) 55%, transparent), transparent);
-  }
-
-  .dark body {
-    background-image:
-      radial-gradient(ellipse 70% 45% at 10% -10%, color-mix(in oklab, var(--primary) 18%, transparent), transparent),
-      radial-gradient(ellipse 50% 35% at 100% 0%, color-mix(in oklab, var(--accent) 35%, transparent), transparent);
   }
 
   h1,
@@ -122,6 +113,7 @@
   h3,
   .font-display {
     font-family: var(--font-display);
+    letter-spacing: -0.02em;
   }
 
   :focus-visible {

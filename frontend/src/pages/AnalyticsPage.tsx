@@ -55,7 +55,7 @@ export function AnalyticsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Progress Analytics"
-        description="Live mastery, attempt history, and revision completion — no hardcoded demo stats."
+        description="Live mastery, attempt history, and revision completion — no hardcoded demo stats. Class-wide teacher analytics are planned for a future release."
       />
 
       <div className="grid gap-4 md:grid-cols-4">

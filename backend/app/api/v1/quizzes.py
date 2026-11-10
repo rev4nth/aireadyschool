@@ -109,6 +109,7 @@ async def start_quiz(
     quiz.status = "in_progress"
     db.add(attempt)
     await db.flush()
+    await db.refresh(quiz)
     return QuizStartResponse(attempt_id=attempt.id, quiz=_quiz_public(quiz))
 
 

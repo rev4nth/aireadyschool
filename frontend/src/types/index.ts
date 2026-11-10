@@ -165,6 +165,8 @@ export interface QuizResult {
   questions?: QuizQuestion[];
   status?: string;
   summary?: string | null;
+  gap_report_id?: string | null;
+  revision_plan_ids?: string[];
   [key: string]: unknown;
 }
 
@@ -189,6 +191,9 @@ export interface GapTopicItem {
   mastery_score: number;
   classification: MasteryClass;
   questions_attempted?: number;
+  correct_count?: number;
+  incorrect_count?: number;
+  reason?: string | null;
   evidence?: unknown[];
   recommended_focus?: string | null;
 }
@@ -273,16 +278,27 @@ export interface DashboardData {
   welcome_name?: string | null;
   study_streak: number;
   current_subject_id?: string | null;
+  subject_name?: string | null;
   upcoming_tasks: Array<{
     id: string;
     title: string;
     priority?: number;
     duration_minutes?: number;
     status?: string;
+    activity?: string | null;
   }>;
   recent_gap_summary?: string | null;
+  gap_weak_count?: number;
+  gap_medium_count?: number;
+  gap_strong_count?: number;
+  weak_topic_preview?: string[];
   overall_mastery: number;
   weak_topic_count: number;
+  medium_topic_count?: number;
+  strong_topic_count?: number;
+  quizzes_completed?: number;
+  plan_completion_pct?: number;
+  improvement_pct?: number;
 }
 
 export interface AnalyticsData {

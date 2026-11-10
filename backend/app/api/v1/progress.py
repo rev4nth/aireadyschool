@@ -6,7 +6,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import AuthenticatedUser, get_current_user
-from app.models import GapReport, Profile, QuizAttempt, RevisionPlan, RevisionTask, TopicMastery
+from app.models import (
+    GapReport,
+    Profile,
+    Quiz,
+    QuizAttempt,
+    RevisionPlan,
+    RevisionTask,
+    Subject,
+    TopicMastery,
+)
 from app.schemas.progress import DashboardResponse, ProgressOverview
 
 router = APIRouter()
@@ -31,24 +40,38 @@ async def progress_overview(
     )
 
     profile = await db.get(Profile, user.id)
-    quizzes_completed = await db.scalar(
+
+    quiz_count_q = (
         select(func.count())
         .select_from(QuizAttempt)
+        .join(Quiz, Quiz.id == QuizAttempt.quiz_id)
         .where(QuizAttempt.user_id == user.id, QuizAttempt.status == "submitted")
     )
+    if subject_id:
+        quiz_count_q = quiz_count_q.where(Quiz.subject_id == subject_id)
+    quizzes_completed = await db.scalar(quiz_count_q)
 
-    tasks_q = select(RevisionTask).where(RevisionTask.user_id == user.id)
+    tasks_q = (
+        select(RevisionTask)
+        .join(RevisionPlan, RevisionPlan.id == RevisionTask.plan_id)
+        .where(RevisionTask.user_id == user.id)
+    )
+    if subject_id:
+        tasks_q = tasks_q.where(RevisionPlan.subject_id == subject_id)
     tasks = list((await db.execute(tasks_q)).scalars().all())
     completed = sum(1 for t in tasks if t.completion_status == "completed")
     plan_pct = (completed / len(tasks) * 100) if tasks else 0.0
 
-    # Improvement: compare latest vs earliest recent scores where available
-    with_history = [m for m in mastery_rows if m.historical_avg is not None and m.recent_score is not None]
+    with_history = [
+        m
+        for m in mastery_rows
+        if m.historical_avg is not None and m.recent_score is not None
+    ]
     improvement = 0.0
     if with_history:
-        improvement = sum((m.recent_score or 0) - (m.historical_avg or 0) for m in with_history) / len(
-            with_history
-        )
+        improvement = sum(
+            (m.recent_score or 0) - (m.historical_avg or 0) for m in with_history
+        ) / len(with_history)
 
     return ProgressOverview(
         overall_mastery=round(overall, 2),
@@ -71,15 +94,25 @@ async def dashboard(
     overview = await progress_overview(subject_id, user, db)
     profile = await db.get(Profile, user.id)
 
+    subject_name = None
+    if subject_id:
+        subject = await db.get(Subject, subject_id)
+        if subject and subject.user_id == user.id:
+            subject_name = subject.name
+
     tasks_q = (
         select(RevisionTask)
+        .join(RevisionPlan, RevisionPlan.id == RevisionTask.plan_id)
         .where(
             RevisionTask.user_id == user.id,
             RevisionTask.completion_status.in_(["pending", "in_progress"]),
+            RevisionPlan.status == "active",
         )
         .order_by(RevisionTask.priority.desc())
-        .limit(5)
+        .limit(6)
     )
+    if subject_id:
+        tasks_q = tasks_q.where(RevisionPlan.subject_id == subject_id)
     upcoming = list((await db.execute(tasks_q)).scalars().all())
 
     gap_q = select(GapReport).where(GapReport.user_id == user.id).order_by(GapReport.created_at.desc())
@@ -87,10 +120,24 @@ async def dashboard(
         gap_q = gap_q.where(GapReport.subject_id == subject_id)
     latest_gap = (await db.execute(gap_q.limit(1))).scalar_one_or_none()
 
+    weak_preview: list[str] = []
+    if latest_gap and isinstance(latest_gap.topics, list):
+        for item in latest_gap.topics:
+            if not isinstance(item, dict):
+                continue
+            if item.get("classification") != "weak":
+                continue
+            name = item.get("topic_name")
+            if name:
+                weak_preview.append(str(name))
+            if len(weak_preview) >= 5:
+                break
+
     return DashboardResponse(
         welcome_name=profile.full_name if profile else user.email,
         study_streak=overview.study_streak,
         current_subject_id=subject_id,
+        subject_name=subject_name,
         upcoming_tasks=[
             {
                 "id": str(t.id),
@@ -98,10 +145,20 @@ async def dashboard(
                 "priority": t.priority,
                 "duration_minutes": t.duration_minutes,
                 "status": t.completion_status,
+                "activity": t.activity,
             }
             for t in upcoming
         ],
         recent_gap_summary=latest_gap.summary if latest_gap else None,
+        gap_weak_count=latest_gap.weak_count if latest_gap else overview.weak_topics,
+        gap_medium_count=latest_gap.medium_count if latest_gap else overview.medium_topics,
+        gap_strong_count=latest_gap.strong_count if latest_gap else overview.strong_topics,
+        weak_topic_preview=weak_preview,
         overall_mastery=overview.overall_mastery,
         weak_topic_count=overview.weak_topics,
+        medium_topic_count=overview.medium_topics,
+        strong_topic_count=overview.strong_topics,
+        quizzes_completed=overview.quizzes_completed,
+        plan_completion_pct=overview.plan_completion_pct,
+        improvement_pct=overview.improvement_pct,
     )

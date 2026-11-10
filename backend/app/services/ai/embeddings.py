@@ -45,10 +45,12 @@ class EmbeddingService:
         )
 
         def _embed_one(text: str) -> list[float]:
+            # gemini-embedding-001 defaults to 3072 dims; request Matryoshka 768 to match pgvector.
             result = genai.embed_content(
                 model=self.model,
                 content=text,
                 task_type="retrieval_document",
+                output_dimensionality=self.dimensions,
             )
             values = result.get("embedding") if isinstance(result, dict) else getattr(result, "embedding", None)
             if not values:
@@ -57,9 +59,7 @@ class EmbeddingService:
             if len(vector) > self.dimensions:
                 vector = vector[: self.dimensions]
             elif len(vector) < self.dimensions:
-                raise ProviderError(
-                    f"Unexpected embedding dimension {len(vector)}; expected {self.dimensions}"
-                )
+                vector = vector + [0.0] * (self.dimensions - len(vector))
             return [float(x) for x in vector]
 
         try:

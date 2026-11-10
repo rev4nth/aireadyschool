@@ -128,7 +128,13 @@ async def create_text_material(
     if len(data) > settings.max_upload_bytes:
         raise AppError("Text content exceeds upload size limit", status_code=400)
 
-    await upload_bytes(storage_path, data, "text/plain")
+    stored_path: str | None = storage_path
+    try:
+        await upload_bytes(storage_path, data, "text/plain")
+    except Exception:  # noqa: BLE001
+        logger.warning("text material storage upload failed; continuing with inline content")
+        stored_path = None
+
     document = Document(
         id=doc_id,
         user_id=user.id,
@@ -136,11 +142,12 @@ async def create_text_material(
         title=payload.title,
         doc_type=payload.doc_type,
         file_name=file_name,
-        storage_path=storage_path,
+        storage_path=stored_path,
         mime_type="text/plain",
         file_size_bytes=len(data),
         status="pending",
-        metadata_={"inline_text": True},
+        # Keep inline copy so processing still works if Storage download fails.
+        metadata_={"inline_text": True, "text_content": payload.content},
     )
     db.add(document)
     await db.flush()

@@ -91,13 +91,34 @@ async def evaluate_attempt(
     quiz.status = "submitted"
     await db.flush()
 
-    # Refresh topic mastery via gap-analysis scoring from persisted answers
+    gap_report_id = None
+    revision_plan_ids: list[UUID] = []
+
+    # Refresh mastery, auto-build gap report, and adapt active revision plans.
     try:
-        from app.services.gap_analysis.service import refresh_mastery_for_subject
+        from app.services.gap_analysis.service import build_gap_report, refresh_mastery_for_subject
+        from app.models import RevisionPlan
+        from app.services.revision.planner import recalculate_revision_plan
 
         await refresh_mastery_for_subject(db, user_id, quiz.subject_id, attempt.id)
+        gap_report = await build_gap_report(db, user_id, quiz.subject_id, attempt.id)
+        gap_report_id = gap_report.id
+
+        plan_rows = (
+            await db.execute(
+                select(RevisionPlan).where(
+                    RevisionPlan.user_id == user_id,
+                    RevisionPlan.subject_id == quiz.subject_id,
+                    RevisionPlan.status == "active",
+                )
+            )
+        ).scalars().all()
+        for plan in plan_rows:
+            plan.gap_report_id = gap_report.id
+            updated = await recalculate_revision_plan(db, plan)
+            revision_plan_ids.append(updated.id)
     except Exception:  # noqa: BLE001
-        logger.exception("mastery refresh skipped after quiz evaluation")
+        logger.exception("post_quiz_diagnosis_refresh_failed attempt=%s", attempt.id)
 
     max_score = attempt.max_score or float(len(questions) * 100)
     percentage = round(((attempt.score or 0.0) / max_score) * 100, 2) if max_score else 0.0
@@ -117,6 +138,8 @@ async def evaluate_attempt(
         answers=results,
         evaluations=results,
         questions=full_questions,
+        gap_report_id=gap_report_id,
+        revision_plan_ids=revision_plan_ids,
     )
 
 

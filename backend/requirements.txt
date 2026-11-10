@@ -10,6 +10,7 @@ python-jose[cryptography]==3.3.0
 PyJWT[crypto]==2.10.1
 supabase==2.11.0
 sqlalchemy==2.0.36
+greenlet==3.5.6
 asyncpg==0.30.0
 psycopg2-binary==2.9.10
 alembic==1.14.0

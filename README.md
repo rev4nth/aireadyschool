@@ -19,7 +19,7 @@ Hackathon 2026 full-stack diagnostic study platform.
 frontend/          React app
 backend/           FastAPI app
 supabase/migrations/  SQL schema + RLS + storage policies
-docs/DEMO_ACCOUNT.md  Judge demo user setup (no hardcoded passwords)
+docs/DEMO_ACCOUNT.md  Judge demo login (demo@gapfinder.ai)
 docker-compose.yml    Redis (+ optional backend)
 ```
 
@@ -86,7 +86,18 @@ App: http://localhost:5173
 
 ## Demo account for judges
 
-See [docs/DEMO_ACCOUNT.md](docs/DEMO_ACCOUNT.md). Create the user in Supabase Auth; do not hardcode passwords in source.
+- Email: `demo@gapfinder.ai`
+- Password: `GapFinderDemo2026!`
+
+Shown on the login page. Details: [docs/DEMO_ACCOUNT.md](docs/DEMO_ACCOUNT.md).
+
+On Materials, use **Load sample Biology pack** for a one-click syllabus + notes + past papers seed.
+
+## Problem-statement coverage
+
+Core loop implemented: Upload → Topic map (with past-paper frequency) → RAG quiz + citations → Answer evaluation → Gap report with reasons → Revision plan (days × hours, auto-refresh after quiz) → Explain assistant → Progress analytics.
+
+**Future (not built):** class-level teacher dashboards, parent views, spaced-repetition reminders, LMS integration.
 
 ## Tests
 
