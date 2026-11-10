@@ -5,6 +5,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
+import { PasswordField } from "@/components/auth/PasswordField";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -28,6 +29,7 @@ export function LoginPage() {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
@@ -46,11 +48,13 @@ export function LoginPage() {
     }
   });
 
+  const passwordReg = register("password");
+
   return (
-    <Card>
+    <Card className="border-border/80 shadow-sm">
       <CardHeader>
-        <CardTitle>Sign in</CardTitle>
-        <CardDescription>Use your account or the demo login below.</CardDescription>
+        <CardTitle className="text-2xl">Welcome back</CardTitle>
+        <CardDescription>Sign in to continue diagnosing what you don’t know.</CardDescription>
       </CardHeader>
       <CardContent>
         <form className="space-y-4" onSubmit={onSubmit}>
@@ -59,18 +63,22 @@ export function LoginPage() {
             <Input id="email" type="email" autoComplete="email" {...register("email")} />
             {errors.email ? <p className="text-xs text-destructive">{errors.email.message}</p> : null}
           </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="password">Password</Label>
+          <PasswordField
+            id="password"
+            label="Password"
+            autoComplete="current-password"
+            error={errors.password?.message}
+            value={watch("password") ?? ""}
+            onChange={passwordReg.onChange}
+            onBlur={passwordReg.onBlur}
+            name={passwordReg.name}
+            ref={passwordReg.ref}
+            hint={
               <Link to="/auth/forgot-password" className="text-xs text-primary hover:underline">
                 Forgot password?
               </Link>
-            </div>
-            <Input id="password" type="password" autoComplete="current-password" {...register("password")} />
-            {errors.password ? (
-              <p className="text-xs text-destructive">{errors.password.message}</p>
-            ) : null}
-          </div>
+            }
+          />
           <Button className="w-full" type="submit" disabled={submitting}>
             {submitting ? "Signing in…" : "Sign in"}
           </Button>
@@ -81,8 +89,8 @@ export function LoginPage() {
             Create one
           </Link>
         </p>
-        <div className="mt-4 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground space-y-1">
-          <p className="font-medium text-foreground">Demo login (judges)</p>
+        <div className="mt-4 rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground space-y-1">
+          <p className="font-medium text-foreground">Demo login</p>
           <p>
             Email: <span className="font-mono text-foreground">demo@gapfinder.ai</span>
           </p>

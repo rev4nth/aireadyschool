@@ -54,35 +54,42 @@ export function AnalyticsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Progress Analytics"
-        description="Live mastery, attempt history, and revision completion — no hardcoded demo stats. Class-wide teacher analytics are planned for a future release."
+        title="Your learning analytics"
+        description="Progress from real quiz attempts only. Trends need at least two attempts."
       />
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardContent className="py-4">
             <p className="text-sm text-muted-foreground">Overall mastery</p>
-            <p className="font-display text-2xl font-semibold">{overview.overall_mastery.toFixed(1)}%</p>
+            <p className="text-2xl font-semibold">{overview.overall_mastery.toFixed(1)}%</p>
+            <p className="mt-1 text-xs text-muted-foreground">Assessed topics only</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-4">
-            <p className="text-sm text-muted-foreground">Weak / Medium / Strong</p>
-            <p className="font-display text-2xl font-semibold">
-              {overview.weak_topics}/{overview.medium_topics}/{overview.strong_topics}
+            <p className="text-sm text-muted-foreground">W / M / S / NA</p>
+            <p className="text-2xl font-semibold">
+              {overview.weak_topics}/{overview.medium_topics}/{overview.strong_topics}/
+              {overview.not_assessed_topics ?? 0}
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-4">
             <p className="text-sm text-muted-foreground">Improvement</p>
-            <p className="font-display text-2xl font-semibold">{overview.improvement_pct.toFixed(1)}%</p>
+            <p className="text-2xl font-semibold">{overview.improvement_pct.toFixed(1)}%</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {(data.quiz_performance_over_time?.length ?? 0) < 2
+                ? "Need another quiz for a trend"
+                : "Recent vs historical average"}
+            </p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-4">
             <p className="text-sm text-muted-foreground">Plan completion</p>
-            <p className="font-display text-2xl font-semibold">{overview.plan_completion_pct.toFixed(1)}%</p>
+            <p className="text-2xl font-semibold">{overview.plan_completion_pct.toFixed(1)}%</p>
           </CardContent>
         </Card>
       </div>
@@ -110,15 +117,21 @@ export function AnalyticsPage() {
             <CardTitle className="text-base">Quiz performance over time</CardTitle>
           </CardHeader>
           <CardContent className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data.quiz_performance_over_time}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" hide />
-                <YAxis domain={[0, 100]} />
-                <Tooltip />
-                <Line type="monotone" dataKey="score_pct" stroke="#0f766e" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
+            {(data.quiz_performance_over_time?.length ?? 0) === 0 ? (
+              <p className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                No quiz attempts yet. Complete a diagnostic to plot scores.
+              </p>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={data.quiz_performance_over_time}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" hide />
+                  <YAxis domain={[0, 100]} />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="score_pct" stroke="#087F70" strokeWidth={2} dot />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
       </div>

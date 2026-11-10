@@ -35,8 +35,14 @@ async def progress_overview(
     weak = sum(1 for m in mastery_rows if m.classification == "weak")
     medium = sum(1 for m in mastery_rows if m.classification == "medium")
     strong = sum(1 for m in mastery_rows if m.classification == "strong")
+    not_assessed = sum(
+        1
+        for m in mastery_rows
+        if m.classification == "not_assessed" or int(m.questions_attempted or 0) <= 0
+    )
+    assessed = [m for m in mastery_rows if int(m.questions_attempted or 0) > 0]
     overall = (
-        sum(m.mastery_score for m in mastery_rows) / len(mastery_rows) if mastery_rows else 0.0
+        sum(m.mastery_score for m in assessed) / len(assessed) if assessed else 0.0
     )
 
     profile = await db.get(Profile, user.id)
@@ -78,6 +84,7 @@ async def progress_overview(
         weak_topics=weak,
         medium_topics=medium,
         strong_topics=strong,
+        not_assessed_topics=not_assessed,
         study_streak=profile.study_streak if profile else 0,
         quizzes_completed=quizzes_completed or 0,
         plan_completion_pct=round(plan_pct, 2),
@@ -121,17 +128,27 @@ async def dashboard(
     latest_gap = (await db.execute(gap_q.limit(1))).scalar_one_or_none()
 
     weak_preview: list[str] = []
+    not_assessed_preview: list[str] = []
     if latest_gap and isinstance(latest_gap.topics, list):
         for item in latest_gap.topics:
             if not isinstance(item, dict):
                 continue
-            if item.get("classification") != "weak":
-                continue
             name = item.get("topic_name")
-            if name:
+            if not name:
+                continue
+            cls = item.get("classification")
+            if cls == "weak" and len(weak_preview) < 5:
                 weak_preview.append(str(name))
-            if len(weak_preview) >= 5:
-                break
+            if cls == "not_assessed" and len(not_assessed_preview) < 5:
+                not_assessed_preview.append(str(name))
+
+    gap_not_assessed = 0
+    if latest_gap and isinstance(latest_gap.topics, list):
+        gap_not_assessed = sum(
+            1
+            for item in latest_gap.topics
+            if isinstance(item, dict) and item.get("classification") == "not_assessed"
+        )
 
     return DashboardResponse(
         welcome_name=profile.full_name if profile else user.email,
@@ -146,6 +163,8 @@ async def dashboard(
                 "duration_minutes": t.duration_minutes,
                 "status": t.completion_status,
                 "activity": t.activity,
+                "scheduled_day": t.scheduled_day,
+                "prioritization_reason": t.prioritization_reason,
             }
             for t in upcoming
         ],
@@ -153,11 +172,14 @@ async def dashboard(
         gap_weak_count=latest_gap.weak_count if latest_gap else overview.weak_topics,
         gap_medium_count=latest_gap.medium_count if latest_gap else overview.medium_topics,
         gap_strong_count=latest_gap.strong_count if latest_gap else overview.strong_topics,
+        gap_not_assessed_count=gap_not_assessed or overview.not_assessed_topics,
         weak_topic_preview=weak_preview,
+        not_assessed_preview=not_assessed_preview,
         overall_mastery=overview.overall_mastery,
         weak_topic_count=overview.weak_topics,
         medium_topic_count=overview.medium_topics,
         strong_topic_count=overview.strong_topics,
+        not_assessed_topic_count=overview.not_assessed_topics,
         quizzes_completed=overview.quizzes_completed,
         plan_completion_pct=overview.plan_completion_pct,
         improvement_pct=overview.improvement_pct,

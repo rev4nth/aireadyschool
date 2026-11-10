@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Brain } from "lucide-react";
 import { toast } from "sonner";
@@ -11,21 +12,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { getErrorMessage } from "@/lib/utils";
-import type { GapTopicItem } from "@/types";
+import { masteryBadgeVariant, masteryLabel, normalizeMastery } from "@/lib/mastery";
+import type { GapTopicItem, MasteryClass } from "@/types";
 
-function topicReason(topic: GapTopicItem): string {
-  if (topic.reason?.trim()) return topic.reason;
-  const attempted = topic.questions_attempted ?? 0;
-  const incorrect = topic.incorrect_count ?? 0;
-  if (attempted > 0) {
-    return `You got ${incorrect} of ${attempted} questions on ${topic.topic_name || "this topic"} wrong.`;
-  }
-  return `No quiz answers yet for ${topic.topic_name || "this topic"} — marked weak until you attempt questions.`;
-}
+type Filter = "all" | MasteryClass;
 
 export function GapReportPage() {
   const { currentSubjectId } = useSubject();
   const queryClient = useQueryClient();
+  const [filter, setFilter] = useState<Filter>("all");
 
   const reportsQuery = useQuery({
     queryKey: ["gap-reports", currentSubjectId],
@@ -38,18 +33,38 @@ export function GapReportPage() {
     onSuccess: async () => {
       toast.success("Gap report generated from your quiz evidence");
       await queryClient.invalidateQueries({ queryKey: ["gap-reports"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
     onError: (error) => toast.error(getErrorMessage(error)),
   });
 
   const latest = reportsQuery.data?.[0];
-  const topics = (latest?.topics ?? []) as GapTopicItem[];
+  const topics = useMemo(() => {
+    const rows = ((latest?.topics ?? []) as GapTopicItem[]).map((t) => ({
+      ...t,
+      classification: normalizeMastery(t.classification, t.questions_attempted),
+    }));
+    if (filter === "all") return rows;
+    return rows.filter((t) => t.classification === filter);
+  }, [latest?.topics, filter]);
+
+  const counts = useMemo(() => {
+    const rows = ((latest?.topics ?? []) as GapTopicItem[]).map((t) =>
+      normalizeMastery(t.classification, t.questions_attempted),
+    );
+    return {
+      weak: rows.filter((c) => c === "weak").length,
+      medium: rows.filter((c) => c === "medium").length,
+      strong: rows.filter((c) => c === "strong").length,
+      not_assessed: rows.filter((c) => c === "not_assessed").length,
+    };
+  }, [latest?.topics]);
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Gap report"
-        description="Weak, medium, and strong topics from your quiz answers."
+        title="Your knowledge gaps"
+        description="Evidence-based diagnosis from quiz answers. Unattempted topics are Not assessed — never Weak."
         actions={
           <Button
             onClick={() => generateMutation.mutate()}
@@ -73,35 +88,91 @@ export function GapReportPage() {
         <>
           <Card>
             <CardHeader>
-              <CardTitle>Overall mastery {latest.overall_mastery?.toFixed(1) ?? 0}%</CardTitle>
+              <CardTitle>
+                Overall mastery {latest.overall_mastery?.toFixed(1) ?? 0}%
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2 text-sm text-muted-foreground">
+            <CardContent className="space-y-3 text-sm text-muted-foreground">
               <p>{latest.summary}</p>
-              <p>
-                Weak {latest.weak_count} · Medium {latest.medium_count} · Strong {latest.strong_count}
-              </p>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                {(
+                  [
+                    ["Weak", counts.weak, "danger"],
+                    ["Medium", counts.medium, "warning"],
+                    ["Strong", counts.strong, "success"],
+                    ["Not assessed", counts.not_assessed, "muted"],
+                  ] as const
+                ).map(([label, value, variant]) => (
+                  <div key={label} className="rounded-lg border border-border px-3 py-2">
+                    <p className="text-xs">{label}</p>
+                    <p className="text-lg font-semibold text-foreground">{value}</p>
+                    <Badge variant={variant} className="mt-1">
+                      {label}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
             </CardContent>
           </Card>
+
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                ["all", "All"],
+                ["weak", "Weak"],
+                ["medium", "Medium"],
+                ["strong", "Strong"],
+                ["not_assessed", "Not assessed"],
+              ] as const
+            ).map(([key, label]) => (
+              <Button
+                key={key}
+                size="sm"
+                variant={filter === key ? "default" : "outline"}
+                onClick={() => setFilter(key)}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
 
           <div className="grid gap-3">
             {topics.map((topic, idx) => (
               <Card key={String(topic.topic_id ?? idx)}>
                 <CardContent className="space-y-2 py-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="font-display text-lg font-semibold">
-                      {topic.topic_name || "Untitled topic"}
-                    </h3>
-                    <Badge>
-                      {topic.classification} · {Number(topic.mastery_score ?? 0).toFixed(0)}%
+                    <h3 className="text-base font-semibold">{topic.topic_name || "Untitled topic"}</h3>
+                    <Badge variant={masteryBadgeVariant(topic.classification)}>
+                      {masteryLabel(topic.classification)}
+                      {topic.classification !== "not_assessed"
+                        ? ` · ${Number(topic.mastery_score ?? 0).toFixed(0)}%`
+                        : ""}
                     </Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground">{topicReason(topic)}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {topic.reason ||
+                      (topic.classification === "not_assessed"
+                        ? "Not assessed — take a quiz to establish your mastery."
+                        : "No reason available.")}
+                  </p>
+                  {topic.classification !== "not_assessed" ? (
+                    <p className="text-xs text-muted-foreground">
+                      Attempted {topic.questions_attempted ?? 0} · Correct {topic.correct_count ?? 0} ·
+                      Incorrect {topic.incorrect_count ?? 0}
+                    </p>
+                  ) : null}
                   {topic.recommended_focus ? (
-                    <p className="text-sm">{topic.recommended_focus}</p>
+                    <p className="text-sm">
+                      <span className="font-medium">Next: </span>
+                      {topic.recommended_focus}
+                    </p>
                   ) : null}
                 </CardContent>
               </Card>
             ))}
+            {!topics.length ? (
+              <p className="text-sm text-muted-foreground">No topics match this filter.</p>
+            ) : null}
           </div>
         </>
       ) : (

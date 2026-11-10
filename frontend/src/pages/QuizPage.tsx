@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClipboardList, Play, Sparkles } from "lucide-react";
 import { toast } from "sonner";
@@ -28,6 +28,7 @@ function flattenTopics(topics: Topic[]): Array<{ id: string; name: string }> {
 
 export function QuizPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const { currentSubjectId } = useSubject();
   const [mode, setMode] = useState<QuizMode>("weak_topics");
@@ -36,6 +37,15 @@ export function QuizPage() {
   const [topicId, setTopicId] = useState("");
   const [timer, setTimer] = useState(false);
   const [title, setTitle] = useState("Diagnostic quiz");
+
+  useEffect(() => {
+    const preselected = (location.state as { preselectedTopicId?: string } | null)?.preselectedTopicId;
+    if (preselected) {
+      setMode("topic");
+      setTopicId(preselected);
+      setTitle("Topic diagnostic");
+    }
+  }, [location.state]);
 
   const quizzesQuery = useQuery({
     queryKey: ["quizzes", currentSubjectId],
@@ -85,7 +95,7 @@ export function QuizPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Diagnostic Quiz"
+        title="Test what you actually know"
         description="Questions are generated only from your retrieved study materials."
       />
 
@@ -104,11 +114,20 @@ export function QuizPage() {
           <div className="space-y-2">
             <Label htmlFor="mode">Mode</Label>
             <Select id="mode" value={mode} onChange={(e) => setMode(e.target.value as QuizMode)}>
-              <option value="subject">By subject</option>
-              <option value="topic">By topic</option>
+              <option value="subject">All topics in subject</option>
+              <option value="topic">Specific topic</option>
               <option value="weak_topics">Across weak topics</option>
-              <option value="custom">Custom</option>
+              <option value="custom">Mixed diagnostic</option>
             </Select>
+            <p className="text-xs text-muted-foreground">
+              {mode === "weak_topics"
+                ? "Tests topics previous attempts identified as needing improvement."
+                : mode === "topic"
+                  ? "Focuses retrieval and questions on one selected topic."
+                  : mode === "subject"
+                    ? "Samples across the subject’s topic map."
+                    : "Flexible diagnostic across selected materials."}
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="difficulty">Difficulty</Label>

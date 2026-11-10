@@ -1,6 +1,6 @@
 export type DocType = "syllabus" | "textbook" | "notes" | "past_paper" | "text";
 export type DocStatus = "pending" | "processing" | "processed" | "failed";
-export type MasteryClass = "weak" | "medium" | "strong";
+export type MasteryClass = "weak" | "medium" | "strong" | "not_assessed";
 export type QuizMode = "subject" | "topic" | "weak_topics" | "custom";
 export type Difficulty = "easy" | "medium" | "hard" | "mixed";
 export type QuestionType = "mcq" | "short_answer" | "conceptual" | "application";
@@ -196,6 +196,8 @@ export interface GapTopicItem {
   reason?: string | null;
   evidence?: unknown[];
   recommended_focus?: string | null;
+  recent_score?: number | null;
+  historical_avg?: number | null;
 }
 
 export interface RevisionTask {
@@ -267,6 +269,7 @@ export interface ProgressOverview {
   weak_topics: number;
   medium_topics: number;
   strong_topics: number;
+  not_assessed_topics?: number;
   study_streak: number;
   quizzes_completed: number;
   plan_completion_pct: number;
@@ -286,16 +289,21 @@ export interface DashboardData {
     duration_minutes?: number;
     status?: string;
     activity?: string | null;
+    scheduled_day?: number | null;
+    prioritization_reason?: string | null;
   }>;
   recent_gap_summary?: string | null;
   gap_weak_count?: number;
   gap_medium_count?: number;
   gap_strong_count?: number;
+  gap_not_assessed_count?: number;
   weak_topic_preview?: string[];
+  not_assessed_preview?: string[];
   overall_mastery: number;
   weak_topic_count: number;
   medium_topic_count?: number;
   strong_topic_count?: number;
+  not_assessed_topic_count?: number;
   quizzes_completed?: number;
   plan_completion_pct?: number;
   improvement_pct?: number;

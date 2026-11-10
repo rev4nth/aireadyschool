@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { masteryBadgeVariant, masteryLabel, normalizeMastery } from "@/lib/mastery";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
@@ -88,49 +89,79 @@ export function QuizResultsPage() {
     return map;
   }, [questions]);
 
+  const correctCount = evaluations.filter((e) => e.classification === "correct" || e.is_correct).length;
+  const incorrectCount = evaluations.filter(
+    (e) => e.classification === "incorrect" || e.is_correct === false,
+  ).length;
+  const unansweredCount = Math.max(questions.length - evaluations.length, 0);
+
+  const gapsHref = result?.gap_report_id ? `/gaps?report=${result.gap_report_id}` : "/gaps";
+
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6 px-4 py-6">
       <PageHeader
         title="Quiz results"
-        description="Answers are revealed only after submission. Gap report and revision plan refresh automatically."
-        actions={
-          <div className="flex gap-2">
-            <Link
-              to="/gaps"
-              className="inline-flex h-10 items-center rounded-md border border-border px-4 text-sm font-medium hover:bg-muted"
-            >
-              View gap report
-            </Link>
-            <Link
-              to="/revision"
-              className="inline-flex h-10 items-center rounded-md border border-border px-4 text-sm font-medium hover:bg-muted"
-            >
-              Revision plan
-            </Link>
-            <Link
-              to="/quiz"
-              className="inline-flex h-10 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-            >
-              Back to quizzes
-            </Link>
-          </div>
-        }
+        description="Answers revealed after submission. Diagnosis and revision plan refresh from this attempt."
       />
+
+      <div className="flex flex-wrap gap-2">
+        <Link
+          to={gapsHref}
+          className="inline-flex h-10 items-center rounded-md border border-border px-4 text-sm font-medium hover:bg-muted"
+        >
+          View gap report
+        </Link>
+        <Link
+          to="/revision"
+          className="inline-flex h-10 items-center rounded-md border border-border px-4 text-sm font-medium hover:bg-muted"
+        >
+          Generate revision plan
+        </Link>
+        <Link
+          to="/assistant"
+          className="inline-flex h-10 items-center rounded-md border border-border px-4 text-sm font-medium hover:bg-muted"
+        >
+          Ask AI about a mistake
+        </Link>
+        <Link
+          to={`/quiz/${quizId}/take`}
+          className="inline-flex h-10 items-center rounded-md border border-border px-4 text-sm font-medium hover:bg-muted"
+        >
+          Retake quiz
+        </Link>
+        <Link
+          to="/quiz"
+          className="inline-flex h-10 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+        >
+          Back to quizzes
+        </Link>
+      </div>
 
       {result ? (
         <>
           <Card>
             <CardHeader>
               <CardTitle>
-                Score:{" "}
-                {percentage != null
-                  ? `${percentage.toFixed(1)}%`
-                  : "—"}
+                Score: {percentage != null ? `${percentage.toFixed(1)}%` : "—"}
                 {score != null && maxScore != null ? ` (${score}/${maxScore})` : ""}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {percentage != null ? <Progress value={percentage} /> : null}
+              <div className="grid gap-2 sm:grid-cols-3">
+                <div className="rounded-lg border border-border px-3 py-2 text-sm">
+                  <p className="text-muted-foreground">Correct</p>
+                  <p className="font-semibold text-success">{correctCount}</p>
+                </div>
+                <div className="rounded-lg border border-border px-3 py-2 text-sm">
+                  <p className="text-muted-foreground">Incorrect</p>
+                  <p className="font-semibold text-destructive">{incorrectCount}</p>
+                </div>
+                <div className="rounded-lg border border-border px-3 py-2 text-sm">
+                  <p className="text-muted-foreground">Unanswered / other</p>
+                  <p className="font-semibold">{unansweredCount}</p>
+                </div>
+              </div>
               {result.gap_report_id ? (
                 <p className="text-sm text-muted-foreground">
                   Diagnosis updated. Gap report and any active revision plan were refreshed from this attempt.
@@ -138,13 +169,19 @@ export function QuizResultsPage() {
               ) : null}
               {Object.entries(result.topic_performance || {}).map(([id, perf]) => {
                 const row = asRecord(perf);
+                const classification = normalizeMastery(
+                  String(row?.classification ?? "not_assessed"),
+                  Number(row?.questions_attempted ?? 1),
+                );
                 return (
                   <div
                     key={id}
                     className="flex items-center justify-between rounded-md border border-border px-3 py-2"
                   >
                     <span>{(row?.topic as string | undefined) ?? id}</span>
-                    <Badge>{(row?.classification as string | undefined) ?? "n/a"}</Badge>
+                    <Badge variant={masteryBadgeVariant(classification)}>
+                      {masteryLabel(classification)}
+                    </Badge>
                   </div>
                 );
               })}
@@ -162,6 +199,10 @@ export function QuizResultsPage() {
               const corrected =
                 (evaluation.corrected_answer as string | undefined) ||
                 ((ev as { corrected_answer?: string }).corrected_answer ?? null);
+              const studentAnswer =
+                (evaluation.student_answer as string | undefined) ||
+                (evaluation.answer_text as string | undefined) ||
+                null;
               const citations = (
                 ((evaluation.citations as Citation[] | undefined) ||
                   ((ev as { citations?: Citation[] }).citations ?? []) ||
@@ -189,6 +230,12 @@ export function QuizResultsPage() {
                         {ev.score != null ? ` · ${ev.score}` : ""}
                       </Badge>
                     </div>
+                    {studentAnswer ? (
+                      <p className="text-sm">
+                        <span className="font-medium">Your answer: </span>
+                        {studentAnswer}
+                      </p>
+                    ) : null}
                     {explanation ? (
                       <p className="text-sm text-muted-foreground">{explanation}</p>
                     ) : null}
@@ -200,17 +247,23 @@ export function QuizResultsPage() {
                     ) : null}
                     {citations.length > 0 ? (
                       <div className="space-y-1 text-xs text-muted-foreground">
-                        <p className="font-medium text-foreground">Sources</p>
+                        <p className="font-medium text-foreground">Sources from your materials</p>
                         {citations.map((c, idx) => (
-                          <div key={`${c.chunk_id ?? idx}`}>
+                          <div key={`${c.chunk_id ?? idx}`} className="rounded-md bg-muted/50 p-2">
                             <p>{formatCitation(c)}</p>
                             {c.excerpt ? (
-                              <p className="mt-0.5 line-clamp-2 italic opacity-90">“{c.excerpt}”</p>
+                              <p className="mt-0.5 line-clamp-3 italic opacity-90">“{c.excerpt}”</p>
                             ) : null}
                           </div>
                         ))}
                       </div>
                     ) : null}
+                    <Link
+                      to="/assistant"
+                      className="inline-block text-xs font-medium text-primary hover:underline"
+                    >
+                      Ask AI to explain this mistake
+                    </Link>
                   </CardContent>
                 </Card>
               );

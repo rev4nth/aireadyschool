@@ -39,16 +39,16 @@ export function ForgotPasswordPage() {
   });
 
   return (
-    <Card>
+    <Card className="border-border/80 shadow-sm">
       <CardHeader>
-        <CardTitle>Reset password</CardTitle>
-        <CardDescription>We will email you a secure link to choose a new password.</CardDescription>
+        <CardTitle className="text-2xl">Reset password</CardTitle>
+        <CardDescription>We’ll email a secure link so you can choose a new password.</CardDescription>
       </CardHeader>
       <CardContent>
         <form className="space-y-4" onSubmit={onSubmit}>
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" {...register("email")} />
+            <Input id="email" type="email" autoComplete="email" {...register("email")} />
             {errors.email ? <p className="text-xs text-destructive">{errors.email.message}</p> : null}
           </div>
           <Button className="w-full" type="submit" disabled={submitting}>

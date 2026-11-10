@@ -18,7 +18,12 @@ from app.services.gap_analysis.scoring import classify_mastery
 
 logger = logging.getLogger(__name__)
 
-CLASS_SEVERITY = {"weak": 1.0, "medium": 0.55, "strong": 0.15}
+CLASS_SEVERITY = {
+    "weak": 1.0,
+    "not_assessed": 0.75,
+    "medium": 0.55,
+    "strong": 0.15,
+}
 
 
 def compute_priority(
@@ -241,10 +246,15 @@ async def _load_topic_inputs(
     for topic in topics:
         mastery = mastery_by_topic.get(topic.id)
         gap_item = gap_by_topic.get(str(topic.id), {})
+        attempted = int(
+            gap_item.get("questions_attempted")
+            if gap_item.get("questions_attempted") is not None
+            else (mastery.questions_attempted if mastery else 0)
+        )
         classification = (
             gap_item.get("classification")
             or (mastery.classification if mastery else None)
-            or classify_mastery(float(topic.mastery_score or 0.0))
+            or classify_mastery(float(topic.mastery_score or 0.0), questions_attempted=attempted)
         )
         severity = CLASS_SEVERITY.get(classification, 0.55) * 100.0
         score = (

@@ -22,7 +22,7 @@ def test_compute_mastery_weights_recent_and_difficulty():
 def test_compute_mastery_empty():
     result = compute_mastery([])
     assert result.mastery_score == 0.0
-    assert result.classification == "weak"
+    assert result.classification == "not_assessed"
 
 
 def test_revision_priority_formula():

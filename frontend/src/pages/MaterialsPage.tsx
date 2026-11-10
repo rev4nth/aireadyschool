@@ -1,11 +1,12 @@
 import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileUp, RefreshCw, Trash2, Upload } from "lucide-react";
+import { Eye, FileUp, RefreshCw, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useSubject } from "@/contexts/SubjectContext";
 import {
   createTextMaterial,
   deleteMaterial,
+  getMaterial,
   listMaterials,
   reprocessMaterial,
   uploadMaterial,
@@ -23,6 +24,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
+import { Dialog } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { formatBytes, getErrorMessage, cn } from "@/lib/utils";
 
 const SAMPLE_PACK = {
@@ -61,6 +64,14 @@ Q5: In which part of the cell does glycolysis occur? (cytoplasm)
 Frequency note: Photosynthesis light reaction and Calvin cycle appear most often.`,
 };
 
+const DOC_TYPE_HELP: Record<string, string> = {
+  syllabus: "Defines units and required topics.",
+  notes: "Your class or textbook notes.",
+  textbook: "Longer reference chapters.",
+  past_paper: "Exam-style questions and frequency signals.",
+  text: "Other study text.",
+};
+
 function statusVariant(status: string): "muted" | "warning" | "success" | "danger" {
   switch (status as DocStatus) {
     case "processed":
@@ -75,6 +86,31 @@ function statusVariant(status: string): "muted" | "warning" | "success" | "dange
   }
 }
 
+function statusMessage(status: string) {
+  switch (status as DocStatus) {
+    case "pending":
+      return "Waiting to be processed.";
+    case "processing":
+      return "Extracting text and preparing searchable study content.";
+    case "processed":
+      return "Ready for topic generation and quizzes.";
+    case "failed":
+      return "Something went wrong while processing this document.";
+    default:
+      return status;
+  }
+}
+
+function previewText(material: Material | null | undefined) {
+  if (!material?.metadata) return null;
+  const meta = material.metadata;
+  const candidates = [meta.text_content, meta.inline_text, meta.content, meta.extracted_text];
+  for (const value of candidates) {
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return null;
+}
+
 export function MaterialsPage() {
   const { currentSubjectId, currentSubject, subjects, setCurrentSubjectId, refetch: refetchSubjects } =
     useSubject();
@@ -84,6 +120,13 @@ export function MaterialsPage() {
   const [docType, setDocType] = useState("notes");
   const [pasteTitle, setPasteTitle] = useState("");
   const [pasteContent, setPasteContent] = useState("");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [sort, setSort] = useState<"newest" | "oldest" | "title">("newest");
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const [sampleConfirm, setSampleConfirm] = useState(false);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["materials", currentSubjectId],
@@ -93,6 +136,12 @@ export function MaterialsPage() {
       const items = query.state.data?.items ?? [];
       return items.some((m) => m.status === "pending" || m.status === "processing") ? 4000 : false;
     },
+  });
+
+  const previewQuery = useQuery({
+    queryKey: ["material", previewId],
+    queryFn: () => getMaterial(previewId!),
+    enabled: Boolean(previewId),
   });
 
   const invalidate = useCallback(() => {
@@ -110,7 +159,7 @@ export function MaterialsPage() {
       });
     },
     onSuccess: () => {
-      toast.success("Upload started");
+      toast.success("Upload confirmed — processing started");
       setUploadPct(null);
       invalidate();
     },
@@ -177,7 +226,7 @@ export function MaterialsPage() {
       return target.name;
     },
     onSuccess: async (subjectName) => {
-      toast.success(`Sample pack uploaded under “${subjectName}” (not the previous subject)`);
+      toast.success(`Sample pack uploaded under “${subjectName}”`);
       await queryClient.invalidateQueries({ queryKey: ["materials"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       await queryClient.invalidateQueries({ queryKey: ["subjects"] });
@@ -189,6 +238,7 @@ export function MaterialsPage() {
     mutationFn: deleteMaterial,
     onSuccess: () => {
       toast.success("Material deleted");
+      setDeleteId(null);
       invalidate();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -211,12 +261,46 @@ export function MaterialsPage() {
         toast.error("Only PDF or plain text files are supported");
         return;
       }
+      if (file.size > 25 * 1024 * 1024) {
+        toast.error("File exceeds the 25 MB upload limit");
+        return;
+      }
       uploadMutation.mutate(file);
     },
     [uploadMutation],
   );
 
   const items = useMemo(() => data?.items ?? [], [data]);
+
+  const counts = useMemo(() => {
+    return {
+      total: items.length,
+      processed: items.filter((m) => m.status === "processed").length,
+      processing: items.filter((m) => m.status === "pending" || m.status === "processing").length,
+      failed: items.filter((m) => m.status === "failed").length,
+    };
+  }, [items]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    let next = items.filter((m) => {
+      const matchesSearch =
+        !q ||
+        m.title.toLowerCase().includes(q) ||
+        (m.file_name ?? "").toLowerCase().includes(q) ||
+        m.doc_type.toLowerCase().includes(q);
+      const matchesStatus = statusFilter === "all" || m.status === statusFilter;
+      const matchesType = typeFilter === "all" || m.doc_type === typeFilter;
+      return matchesSearch && matchesStatus && matchesType;
+    });
+    next = [...next].sort((a, b) => {
+      if (sort === "title") return a.title.localeCompare(b.title);
+      const aTime = new Date(a.created_at ?? 0).getTime();
+      const bTime = new Date(b.created_at ?? 0).getTime();
+      return sort === "newest" ? bTime - aTime : aTime - bTime;
+    });
+    return next;
+  }, [items, search, statusFilter, typeFilter, sort]);
 
   if (!currentSubjectId) {
     return (
@@ -228,23 +312,21 @@ export function MaterialsPage() {
     );
   }
 
+  const preview = previewQuery.data;
+  const textPreview = previewText(preview);
+
   return (
     <div>
       <PageHeader
-        title="My Materials"
-        description={`Uploads go to “${currentSubject?.name ?? "selected subject"}”. Sample Biology pack always targets a Biology subject.`}
+        title="My Study Materials"
+        description="Your uploaded materials are the foundation of your personal learning system."
         actions={
           <Button
             variant="outline"
             disabled={sampleMutation.isPending}
             onClick={() => {
-              if (
-                currentSubject &&
-                !currentSubject.name.toLowerCase().includes("biology") &&
-                !window.confirm(
-                  `Current subject is “${currentSubject.name}”. Sample Biology pack will switch to / create a Biology subject. Continue?`,
-                )
-              ) {
+              if (currentSubject && !currentSubject.name.toLowerCase().includes("biology")) {
+                setSampleConfirm(true);
                 return;
               }
               sampleMutation.mutate();
@@ -255,18 +337,38 @@ export function MaterialsPage() {
         }
       />
 
+      <div className="mb-6 grid gap-3 sm:grid-cols-4">
+        {[
+          { label: "Total", value: counts.total },
+          { label: "Processed", value: counts.processed },
+          { label: "Processing", value: counts.processing },
+          { label: "Failed", value: counts.failed },
+        ].map((stat) => (
+          <Card key={stat.label}>
+            <CardContent className="py-4">
+              <p className="text-xs text-muted-foreground">{stat.label}</p>
+              <p className="text-2xl font-semibold">{stat.value}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
       <Card className="mb-6">
         <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
-          <CardTitle className="text-base">Upload file</CardTitle>
+          <div>
+            <CardTitle className="text-base">Upload file</CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">PDF or TXT · max 25 MB</p>
+          </div>
           <Select className="w-40" value={docType} onChange={(e) => setDocType(e.target.value)}>
             <option value="syllabus">Syllabus</option>
             <option value="textbook">Textbook</option>
             <option value="notes">Notes</option>
             <option value="past_paper">Past paper</option>
-            <option value="text">Text</option>
+            <option value="text">Other</option>
           </Select>
         </CardHeader>
         <CardContent>
+          <p className="mb-3 text-xs text-muted-foreground">{DOC_TYPE_HELP[docType]}</p>
           <label
             className={cn(
               "flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-6 py-10 transition-colors",
@@ -311,7 +413,7 @@ export function MaterialsPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="space-y-2">
-            <Label htmlFor="paste-title">Title</Label>
+            <Label htmlFor="paste-title">Document title</Label>
             <Input
               id="paste-title"
               placeholder="e.g. Chapter 3 notes"
@@ -320,7 +422,7 @@ export function MaterialsPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="paste-content">Content</Label>
+            <Label htmlFor="paste-content">Text content</Label>
             <Textarea
               id="paste-content"
               rows={8}
@@ -328,15 +430,56 @@ export function MaterialsPage() {
               value={pasteContent}
               onChange={(e) => setPasteContent(e.target.value)}
             />
+            <p className="text-xs text-muted-foreground">{pasteContent.length.toLocaleString()} characters</p>
           </div>
-          <Button
-            onClick={() => pasteMutation.mutate()}
-            disabled={pasteMutation.isPending || !pasteContent.trim()}
-          >
-            {pasteMutation.isPending ? "Saving…" : "Save pasted material"}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={() => pasteMutation.mutate()}
+              disabled={pasteMutation.isPending || !pasteContent.trim()}
+            >
+              {pasteMutation.isPending ? "Saving…" : "Save pasted material"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setPasteTitle("");
+                setPasteContent("");
+              }}
+            >
+              Clear
+            </Button>
+          </div>
         </CardContent>
       </Card>
+
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
+        <Input
+          placeholder="Search documents…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="lg:max-w-xs"
+        />
+        <Select className="lg:w-40" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <option value="all">All statuses</option>
+          <option value="processed">Processed</option>
+          <option value="processing">Processing</option>
+          <option value="pending">Pending</option>
+          <option value="failed">Failed</option>
+        </Select>
+        <Select className="lg:w-40" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+          <option value="all">All types</option>
+          <option value="syllabus">Syllabus</option>
+          <option value="notes">Notes</option>
+          <option value="textbook">Textbook</option>
+          <option value="past_paper">Past paper</option>
+          <option value="text">Other</option>
+        </Select>
+        <Select className="lg:w-40" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+          <option value="title">Title A–Z</option>
+        </Select>
+      </div>
 
       {isLoading ? (
         <div className="space-y-3">
@@ -349,11 +492,17 @@ export function MaterialsPage() {
         <EmptyState
           icon={Upload}
           title="No materials yet"
-          description="Upload a syllabus or notes to unlock topic maps and quizzes."
+          description="Start by uploading your syllabus or notes."
+        />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon={Upload}
+          title="No matching documents"
+          description="Adjust search or filters to find a document."
         />
       ) : (
         <div className="space-y-3">
-          {items.map((material: Material) => (
+          {filtered.map((material: Material) => (
             <Card key={material.id}>
               <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
@@ -365,7 +514,11 @@ export function MaterialsPage() {
                   <p className="mt-1 text-xs text-muted-foreground">
                     {material.file_name || "Untitled"} · {formatBytes(material.file_size_bytes)}
                     {material.page_count ? ` · ${material.page_count} pages` : ""}
+                    {material.created_at
+                      ? ` · ${new Date(material.created_at).toLocaleDateString()}`
+                      : ""}
                   </p>
+                  <p className="mt-1 text-xs text-muted-foreground">{statusMessage(material.status)}</p>
                   {material.error_message ? (
                     <p className="mt-1 text-xs text-destructive">{material.error_message}</p>
                   ) : null}
@@ -373,7 +526,11 @@ export function MaterialsPage() {
                     <Progress className="mt-2" value={material.status === "processing" ? 65 : 25} />
                   )}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setPreviewId(material.id)}>
+                    <Eye className="h-4 w-4" />
+                    Preview
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
@@ -387,11 +544,7 @@ export function MaterialsPage() {
                     variant="destructive"
                     size="sm"
                     disabled={deleteMutation.isPending}
-                    onClick={() => {
-                      if (window.confirm("Delete this material?")) {
-                        deleteMutation.mutate(material.id);
-                      }
-                    }}
+                    onClick={() => setDeleteId(material.id)}
                   >
                     <Trash2 className="h-4 w-4" />
                     Delete
@@ -402,6 +555,59 @@ export function MaterialsPage() {
           ))}
         </div>
       )}
+
+      <Dialog
+        open={Boolean(previewId)}
+        onOpenChange={(open) => {
+          if (!open) setPreviewId(null);
+        }}
+        title={preview?.title || "Document preview"}
+        description={`${preview?.doc_type ?? ""} · ${preview?.status ?? ""}`}
+        className="max-w-2xl"
+      >
+        {previewQuery.isLoading ? (
+          <Skeleton className="h-40" />
+        ) : textPreview ? (
+          <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-muted/50 p-3 text-xs leading-relaxed">
+            {textPreview}
+          </pre>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Extracted text preview isn’t available for this file yet. Processed documents still power
+            topics, quizzes, and citations even when inline preview isn’t stored.
+          </p>
+        )}
+        {preview?.error_message ? (
+          <p className="mt-3 text-sm text-destructive">{preview.error_message}</p>
+        ) : null}
+      </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(deleteId)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteId(null);
+        }}
+        title="Delete this material?"
+        description="This removes the document and its searchable chunks from the current subject."
+        confirmLabel="Delete"
+        destructive
+        loading={deleteMutation.isPending}
+        onConfirm={() => {
+          if (deleteId) deleteMutation.mutate(deleteId);
+        }}
+      />
+
+      <ConfirmDialog
+        open={sampleConfirm}
+        onOpenChange={setSampleConfirm}
+        title="Load Biology sample pack?"
+        description={`Current subject is “${currentSubject?.name}”. The sample pack will switch to / create a Biology subject.`}
+        confirmLabel="Continue"
+        onConfirm={() => {
+          setSampleConfirm(false);
+          sampleMutation.mutate();
+        }}
+      />
     </div>
   );
 }

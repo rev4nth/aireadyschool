@@ -146,42 +146,66 @@ export function RevisionPlanPage() {
               Recalculate
             </Button>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {(latest.tasks ?? [])
-              .slice()
-              .sort((a, b) => b.priority - a.priority)
-              .map((task) => (
-                <div
-                  key={task.id}
-                  className="flex flex-col gap-2 rounded-md border border-border p-3 md:flex-row md:items-center md:justify-between"
-                >
-                  <div>
-                    <p className="font-medium">{task.title}</p>
-                    <p className="text-sm text-muted-foreground">{task.activity}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{task.prioritization_reason}</p>
+          <CardContent className="space-y-5">
+            {Object.entries(
+              (latest.tasks ?? []).reduce<Record<string, typeof latest.tasks>>((acc, task) => {
+                const day = String(task.scheduled_day ?? "Later");
+                acc[day] = [...(acc[day] ?? []), task];
+                return acc;
+              }, {}),
+            )
+              .sort(([a], [b]) => {
+                if (a === "Later") return 1;
+                if (b === "Later") return -1;
+                return Number(a) - Number(b);
+              })
+              .map(([day, tasks]) => (
+                <div key={day} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold">
+                      {day === "Later" ? "Unscheduled" : `Day ${day}`}
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      {(tasks ?? []).reduce((sum, t) => sum + (t.duration_minutes || 0), 0)} min
+                    </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary">P{task.priority}</Badge>
-                    <Badge>{task.duration_minutes}m</Badge>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={task.completion_status === "completed"}
-                      onClick={async () => {
-                        try {
-                          await updateRevisionTask(latest.id, task.id, {
-                            completion_status: "completed",
-                          });
-                          toast.success("Task completed");
-                          await queryClient.invalidateQueries({ queryKey: ["revision-plans"] });
-                        } catch (error) {
-                          toast.error(getErrorMessage(error));
-                        }
-                      }}
-                    >
-                      {task.completion_status === "completed" ? "Done" : "Complete"}
-                    </Button>
-                  </div>
+                  {(tasks ?? [])
+                    .slice()
+                    .sort((a, b) => b.priority - a.priority)
+                    .map((task) => (
+                      <div
+                        key={task.id}
+                        className="flex flex-col gap-2 rounded-md border border-border p-3 md:flex-row md:items-center md:justify-between"
+                      >
+                        <div>
+                          <p className="font-medium">{task.title}</p>
+                          <p className="text-sm text-muted-foreground">{task.activity}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{task.prioritization_reason}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="secondary">P{Math.round(task.priority)}</Badge>
+                          <Badge>{task.duration_minutes}m</Badge>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={task.completion_status === "completed"}
+                            onClick={async () => {
+                              try {
+                                await updateRevisionTask(latest.id, task.id, {
+                                  completion_status: "completed",
+                                });
+                                toast.success("Task completed");
+                                await queryClient.invalidateQueries({ queryKey: ["revision-plans"] });
+                              } catch (error) {
+                                toast.error(getErrorMessage(error));
+                              }
+                            }}
+                          >
+                            {task.completion_status === "completed" ? "Done" : "Complete"}
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
                 </div>
               ))}
           </CardContent>

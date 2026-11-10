@@ -13,6 +13,7 @@ class ProgressOverview(BaseModel):
     weak_topics: int = 0
     medium_topics: int = 0
     strong_topics: int = 0
+    not_assessed_topics: int = 0
     study_streak: int = 0
     quizzes_completed: int = 0
     plan_completion_pct: float = 0.0
@@ -29,11 +30,14 @@ class DashboardResponse(BaseModel):
     gap_weak_count: int = 0
     gap_medium_count: int = 0
     gap_strong_count: int = 0
+    gap_not_assessed_count: int = 0
     weak_topic_preview: list[str] = Field(default_factory=list)
+    not_assessed_preview: list[str] = Field(default_factory=list)
     overall_mastery: float = 0.0
     weak_topic_count: int = 0
     medium_topic_count: int = 0
     strong_topic_count: int = 0
+    not_assessed_topic_count: int = 0
     quizzes_completed: int = 0
     plan_completion_pct: float = 0.0
     improvement_pct: float = 0.0

@@ -51,18 +51,22 @@ async def build_gap_report(
     signals_by_topic = await _collect_signals(db, user_id, subject_id, attempt_id)
 
     topic_payload: list[dict[str, Any]] = []
-    weak = medium = strong = 0
-    mastery_scores: list[float] = []
+    weak = medium = strong = not_assessed = 0
+    assessed_scores: list[float] = []
 
     for topic in topics:
         result = compute_mastery(signals_by_topic.get(topic.id, []))
-        mastery_scores.append(result.mastery_score)
         if result.classification == "weak":
             weak += 1
         elif result.classification == "medium":
             medium += 1
-        else:
+        elif result.classification == "strong":
             strong += 1
+        else:
+            not_assessed += 1
+
+        if result.questions_attempted > 0:
+            assessed_scores.append(result.mastery_score)
 
         await _upsert_topic_mastery(db, user_id, subject_id, topic, result)
         topic.mastery_score = result.mastery_score
@@ -85,15 +89,17 @@ async def build_gap_report(
             }
         )
 
-    overall = round(sum(mastery_scores) / len(mastery_scores), 2) if mastery_scores else 0.0
+    overall = round(sum(assessed_scores) / len(assessed_scores), 2) if assessed_scores else 0.0
     report = GapReport(
         user_id=user_id,
         subject_id=subject_id,
         attempt_id=attempt_id,
         summary=(
-            f"{subject.name}: overall mastery {overall:.1f}. "
-            f"{weak} weak, {medium} medium, {strong} strong topics. "
-            "Evidence is drawn only from your submitted answers."
+            f"{subject.name}: overall mastery {overall:.1f}% "
+            f"(from {len(assessed_scores)} assessed topic"
+            f"{'' if len(assessed_scores) == 1 else 's'}). "
+            f"{weak} weak, {medium} medium, {strong} strong, {not_assessed} not assessed. "
+            "Unattempted topics are not counted as weak."
         ),
         topics=topic_payload,
         overall_mastery=overall,
@@ -186,8 +192,8 @@ def _build_reason(topic_name: str, result: MasteryResult) -> str:
     correct = int(result.correct_count or 0)
     if attempted <= 0:
         return (
-            f"No quiz answers yet for {topic_name} — marked weak until you attempt "
-            "questions on this topic."
+            f"Not assessed — no quiz answers yet for {topic_name}. "
+            "Take a diagnostic quiz to measure mastery."
         )
 
     misconceptions = [
@@ -197,15 +203,29 @@ def _build_reason(topic_name: str, result: MasteryResult) -> str:
     ]
     top_misconception = next((m for m in misconceptions if m), None)
 
-    base = f"You got {incorrect} of {attempted} questions on {topic_name} wrong"
-    if correct and incorrect == 0:
-        base = f"You got {correct} of {attempted} questions on {topic_name} correct"
+    if incorrect == 0:
+        base = (
+            f"{correct} of {attempted} question{'s' if attempted != 1 else ''} on "
+            f"{topic_name} answered correctly. No incorrect answers."
+        )
+    elif correct == 0:
+        base = (
+            f"{incorrect} of {attempted} question{'s' if attempted != 1 else ''} on "
+            f"{topic_name} answered incorrectly."
+        )
+    else:
+        base = (
+            f"On {topic_name}: {correct} correct, {incorrect} incorrect "
+            f"out of {attempted} question{'s' if attempted != 1 else ''}."
+        )
     if top_misconception:
-        return f"{base}, mostly about {top_misconception}."
-    return f"{base}."
+        return f"{base} Main issue: {top_misconception}."
+    return base
 
 
 def _recommend_focus(classification: str, topic_name: str) -> str:
+    if classification == "not_assessed":
+        return f"Take a short quiz on {topic_name} to establish your mastery."
     if classification == "weak":
         return f"Prioritize foundational review and guided practice for {topic_name}."
     if classification == "medium":

@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from app.core.config import get_settings
 
-MasteryClass = Literal["weak", "medium", "strong"]
+MasteryClass = Literal["weak", "medium", "strong", "not_assessed"]
 
 DIFFICULTY_WEIGHTS = {
     "easy": 0.8,
@@ -43,7 +43,9 @@ class MasteryResult:
     formula: str
 
 
-def classify_mastery(score: float) -> MasteryClass:
+def classify_mastery(score: float, *, questions_attempted: int | None = None) -> MasteryClass:
+    if questions_attempted is not None and questions_attempted <= 0:
+        return "not_assessed"
     settings = get_settings()
     if score < settings.mastery_weak_threshold:
         return "weak"
@@ -62,12 +64,13 @@ def compute_mastery(
     """
     mastery = recent_weight * recent_score + historical_weight * historical_avg
     where each attempt score is difficulty-weighted, then clamped to 0–100.
-    Thresholds come from settings.mastery_weak_threshold / mastery_strong_threshold.
+
+    Empty history → not_assessed (never weak).
     """
     if not signals:
         return MasteryResult(
             mastery_score=0.0,
-            classification="weak",
+            classification="not_assessed",
             questions_attempted=0,
             correct_count=0,
             incorrect_count=0,
@@ -75,7 +78,7 @@ def compute_mastery(
             historical_avg=None,
             confidence=0.0,
             evidence=[],
-            formula="mastery = 0.65*recent + 0.35*historical; empty history → 0 (weak)",
+            formula="mastery = 0.65*recent + 0.35*historical; empty history → not_assessed",
         )
 
     ordered = sorted(
@@ -114,12 +117,15 @@ def compute_mastery(
     historical_avg = sum(weighted) / len(weighted)
     recent_slice = weighted[-recent_window:]
     recent_score = sum(recent_slice) / len(recent_slice)
-    mastery = round(max(0.0, min(100.0, recent_weight * recent_score + historical_weight * historical_avg)), 2)
+    mastery = round(
+        max(0.0, min(100.0, recent_weight * recent_score + historical_weight * historical_avg)),
+        2,
+    )
     confidence = round(1.0 - pow(2.718281828, -len(ordered) / 5.0), 4)
 
     return MasteryResult(
         mastery_score=mastery,
-        classification=classify_mastery(mastery),
+        classification=classify_mastery(mastery, questions_attempted=len(ordered)),
         questions_attempted=len(ordered),
         correct_count=correct,
         incorrect_count=incorrect,

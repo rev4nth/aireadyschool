@@ -3,22 +3,51 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, Map, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useSubject } from "@/contexts/SubjectContext";
-import { generateTopicMap, listTopics, updateTopic } from "@/services/topics";
-import type { MasteryClass, Topic } from "@/types";
+import { generateTopicMap, listTopics } from "@/services/topics";
+import type { Topic } from "@/types";
+import { TopicDetailDrawer } from "@/components/topics/TopicDetailDrawer";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { cn, getErrorMessage } from "@/lib/utils";
+import { masteryBadgeVariant, masteryLabel, normalizeMastery } from "@/lib/mastery";
 
-function masteryVariant(score: number): { label: MasteryClass; variant: "danger" | "warning" | "success" } {
-  if (score < 40) return { label: "weak", variant: "danger" };
-  if (score < 70) return { label: "medium", variant: "warning" };
-  return { label: "strong", variant: "success" };
+function topicMastery(topic: Topic): {
+  label: string;
+  variant: "danger" | "warning" | "success" | "muted";
+  scoreLabel: string;
+  classification: ReturnType<typeof normalizeMastery>;
+} {
+  const classification = normalizeMastery(
+    topic.mastery_score > 0
+      ? topic.mastery_score < 40
+        ? "weak"
+        : topic.mastery_score < 70
+          ? "medium"
+          : "strong"
+      : "not_assessed",
+    topic.mastery_score > 0 ? 1 : 0,
+  );
+  return {
+    label: masteryLabel(classification),
+    variant: masteryBadgeVariant(classification),
+    scoreLabel: classification === "not_assessed" ? "—" : `${Math.round(topic.mastery_score)}%`,
+    classification,
+  };
+}
+
+function collectIds(topics: Topic[], acc: string[] = []): string[] {
+  for (const t of topics) {
+    acc.push(t.id);
+    if (t.children?.length) collectIds(t.children, acc);
+  }
+  return acc;
 }
 
 function TopicNodeRow({
@@ -26,24 +55,27 @@ function TopicNodeRow({
   depth,
   expanded,
   onToggle,
-  onRename,
+  onSelect,
+  selectedId,
 }: {
   topic: Topic;
   depth: number;
   expanded: Set<string>;
   onToggle: (id: string) => void;
-  onRename: (id: string, name: string) => void;
+  onSelect: (topic: Topic) => void;
+  selectedId?: string | null;
 }) {
   const hasChildren = Boolean(topic.children?.length);
   const isOpen = expanded.has(topic.id);
-  const mastery = masteryVariant(topic.mastery_score);
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(topic.name);
+  const mastery = topicMastery(topic);
 
   return (
     <div>
       <div
-        className="group flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-muted/70"
+        className={cn(
+          "group flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-muted/70",
+          selectedId === topic.id && "bg-accent/70",
+        )}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
       >
         <button
@@ -54,37 +86,13 @@ function TopicNodeRow({
         >
           {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
-        <div className="min-w-0 flex-1">
-          {editing ? (
-            <Input
-              value={name}
-              autoFocus
-              onChange={(e) => setName(e.target.value)}
-              onBlur={() => {
-                setEditing(false);
-                if (name.trim() && name !== topic.name) onRename(topic.id, name.trim());
-                else setName(topic.name);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                if (e.key === "Escape") {
-                  setName(topic.name);
-                  setEditing(false);
-                }
-              }}
-              className="h-8"
-            />
-          ) : (
-            <button
-              type="button"
-              className="truncate text-left text-sm font-medium hover:underline"
-              onClick={() => setEditing(true)}
-              title="Click to rename"
-            >
-              {topic.name}
-            </button>
-          )}
-        </div>
+        <button
+          type="button"
+          className="min-w-0 flex-1 truncate text-left text-sm font-medium hover:underline"
+          onClick={() => onSelect(topic)}
+        >
+          {topic.name}
+        </button>
         <Badge variant="outline" title="Exam importance">
           Exam {Math.round(topic.exam_importance ?? 0)}
         </Badge>
@@ -92,9 +100,7 @@ function TopicNodeRow({
           Papers ×{topic.past_paper_frequency ?? 0}
         </Badge>
         <Badge variant={mastery.variant}>{mastery.label}</Badge>
-        <span className="w-10 text-right text-xs text-muted-foreground">
-          {Math.round(topic.mastery_score)}%
-        </span>
+        <span className="w-10 text-right text-xs text-muted-foreground">{mastery.scoreLabel}</span>
       </div>
       {hasChildren && isOpen
         ? topic.children!.map((child) => (
@@ -104,7 +110,8 @@ function TopicNodeRow({
               depth={depth + 1}
               expanded={expanded}
               onToggle={onToggle}
-              onRename={onRename}
+              onSelect={onSelect}
+              selectedId={selectedId}
             />
           ))
         : null}
@@ -112,10 +119,33 @@ function TopicNodeRow({
   );
 }
 
+function filterTree(
+  topics: Topic[],
+  query: string,
+  masteryFilter: string,
+): Topic[] {
+  const q = query.trim().toLowerCase();
+  return topics
+    .map((topic) => {
+      const children = filterTree(topic.children ?? [], query, masteryFilter);
+      const mastery = topicMastery(topic).classification;
+      const matchesQuery = !q || topic.name.toLowerCase().includes(q);
+      const matchesMastery = masteryFilter === "all" || mastery === masteryFilter;
+      if ((matchesQuery && matchesMastery) || children.length) {
+        return { ...topic, children };
+      }
+      return null;
+    })
+    .filter(Boolean) as Topic[];
+}
+
 export function TopicMapPage() {
   const { currentSubjectId } = useSubject();
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Topic | null>(null);
+  const [search, setSearch] = useState("");
+  const [masteryFilter, setMasteryFilter] = useState("all");
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["topics", currentSubjectId],
@@ -132,16 +162,11 @@ export function TopicMapPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
-  const renameMutation = useMutation({
-    mutationFn: ({ id, name }: { id: string; name: string }) => updateTopic(id, { name }),
-    onSuccess: () => {
-      toast.success("Topic renamed");
-      void queryClient.invalidateQueries({ queryKey: ["topics", currentSubjectId] });
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
   const topics = useMemo(() => data?.topics ?? [], [data]);
+  const filtered = useMemo(
+    () => filterTree(topics, search, masteryFilter),
+    [topics, search, masteryFilter],
+  );
 
   const toggle = (id: string) => {
     setExpanded((prev) => {
@@ -159,18 +184,55 @@ export function TopicMapPage() {
   return (
     <div>
       <PageHeader
-        title="Topic Map"
-        description="Syllabus hierarchy with mastery, exam importance, and past-paper frequency. Click a name to edit."
+        title="My Topic Map"
+        description="Explore your syllabus, understand topic importance, and track mastery. Click a topic for details."
         actions={
-          <Button
-            disabled={generateMutation.isPending}
-            onClick={() => generateMutation.mutate()}
-          >
-            <Sparkles className="h-4 w-4" />
-            {generateMutation.isPending ? "Generating…" : "Generate from materials"}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setExpanded(new Set(collectIds(topics)))}
+              disabled={!topics.length}
+            >
+              Expand all
+            </Button>
+            <Button variant="outline" onClick={() => setExpanded(new Set())} disabled={!topics.length}>
+              Collapse all
+            </Button>
+            <Button disabled={generateMutation.isPending} onClick={() => generateMutation.mutate()}>
+              <Sparkles className="h-4 w-4" />
+              {generateMutation.isPending ? "Generating…" : "Generate from materials"}
+            </Button>
+          </div>
         }
       />
+
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row">
+        <Input
+          placeholder="Search topics…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="sm:max-w-xs"
+        />
+        <Select
+          className="sm:w-48"
+          value={masteryFilter}
+          onChange={(e) => setMasteryFilter(e.target.value)}
+        >
+          <option value="all">All mastery</option>
+          <option value="weak">Weak</option>
+          <option value="medium">Medium</option>
+          <option value="strong">Strong</option>
+          <option value="not_assessed">Not assessed</option>
+        </Select>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="sm:ml-auto"
+          onClick={() => void refetch()}
+        >
+          Refresh
+        </Button>
+      </div>
 
       {isLoading ? (
         <Skeleton className="h-64" />
@@ -180,29 +242,38 @@ export function TopicMapPage() {
         <EmptyState
           icon={Map}
           title="No topics yet"
-          description="Generate a topic map from your uploaded syllabus or notes."
+          description="Generate your topic map from processed materials."
           action={
             <Button disabled={generateMutation.isPending} onClick={() => generateMutation.mutate()}>
               Generate topic map
             </Button>
           }
         />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon={Map}
+          title="No matching topics"
+          description="Try a different search or mastery filter."
+        />
       ) : (
         <Card>
           <CardContent className="p-3">
-            {topics.map((topic) => (
+            {filtered.map((topic) => (
               <TopicNodeRow
                 key={topic.id}
                 topic={topic}
                 depth={0}
                 expanded={expanded}
                 onToggle={toggle}
-                onRename={(id, name) => renameMutation.mutate({ id, name })}
+                onSelect={setSelected}
+                selectedId={selected?.id}
               />
             ))}
           </CardContent>
         </Card>
       )}
+
+      <TopicDetailDrawer topic={selected} onClose={() => setSelected(null)} />
     </div>
   );
 }
